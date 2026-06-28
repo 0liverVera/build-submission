@@ -830,6 +830,12 @@ body {
   grid-row: 2;
   background: linear-gradient(180deg, #ffe27a, var(--gold-deep));
 }
+.c5-btn.block {
+  grid-column: 2;
+  grid-row: 2;
+  background: linear-gradient(180deg, #b86bff, #7c3aed);
+  color: #fff;
+}
 
 /* --- Rotate-your-device gate --- */
 .rotate-gate {

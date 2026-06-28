@@ -41,14 +41,26 @@ interface Controls {
   charging: boolean
   release: boolean
   pass: boolean
+  switchD: boolean
+  steal: boolean
+  block: boolean
 }
 
 export default function Court5v5() {
   const navigate = useGame((s) => s.navigate)
   const franchise = useGame((s) => s.franchise)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const controls = useRef<Controls>({ sprint: false, charging: false, release: false, pass: false })
+  const controls = useRef<Controls>({
+    sprint: false,
+    charging: false,
+    release: false,
+    pass: false,
+    switchD: false,
+    steal: false,
+    block: false,
+  })
   const [msg, setMsg] = useState<{ text: string; kind: string }>({ text: '', kind: '' })
+  const [onDefense, setOnDefense] = useState(false)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -79,7 +91,11 @@ export default function Court5v5() {
     const away: P[] = AWAY.map(() => ({ x: 0, y: 0, team: 'away' }))
     let active = 0
 
-    const ball = { x: 0, y: 0, z: 0, t: 0, dur: 0.7, peak: 60, heldBy: 0 as number | null }
+    const ball = { x: 0, y: 0, z: 0, t: 0, dur: 0.7, peak: 60 }
+    let possession: 'home' | 'away' = 'home'
+    let awayHandler = 0
+    let stealCd = 0
+    let blockUntil = 0
     let phase: 'live' | 'passing' | 'shooting' | 'resolved' = 'live'
     let charge = 0
     let stamina = 1
@@ -179,7 +195,6 @@ export default function Court5v5() {
       const a = home[passFrom]
       const b = home[passTo]
       passDur = clamp(dist(a.x, a.y, b.x, b.y) / (W * 3), 0.16, 0.4)
-      ball.heldBy = null
       phase = 'passing'
       sfx.pass()
     }
@@ -193,7 +208,6 @@ export default function Court5v5() {
       made = Math.random() < prob
       shotFrom.x = a.x
       shotFrom.y = a.y
-      ball.heldBy = null
       ball.x = a.x
       ball.y = a.y
       ball.z = 0
@@ -245,6 +259,101 @@ export default function Court5v5() {
       resolveAt = now + 0.9
     }
 
+    // Steer a player toward a target with separation from everyone nearby.
+    function steerTo(p: P, tx: number, ty: number, spd: number, dt: number, sep = pr * 3) {
+      let sx = 0
+      let sy = 0
+      for (const o of [...home, ...away]) {
+        if (o === p) continue
+        const d = dist(p.x, p.y, o.x, o.y)
+        if (d > 0.1 && d < sep) {
+          sx += (p.x - o.x) / d
+          sy += (p.y - o.y) / d
+        }
+      }
+      const gx = tx + sx * pr * 1.6 - p.x
+      const gy = ty + sy * pr * 1.6 - p.y
+      const d = Math.hypot(gx, gy)
+      if (d > 2) {
+        const s = Math.min(spd * dt, d)
+        p.x = clamp(p.x + (gx / d) * s, W * 0.05, W * 0.95)
+        p.y = clamp(p.y + (gy / d) * s, band + pr, H - band - pr)
+      }
+    }
+
+    function runOffenseAI(dt: number) {
+      if (now > nextCutAt) {
+        nextCutAt = now + 2.4 + Math.random() * 1.8
+        const cands: number[] = []
+        for (let i = 0; i < home.length; i++) if (i !== active && now >= cutUntil[i]) cands.push(i)
+        if (cands.length) cutUntil[cands[(Math.random() * cands.length) | 0]] = now + 1.2
+      }
+      for (let i = 0; i < home.length; i++) {
+        if (i === active) continue
+        const p = home[i]
+        const cutting = now < cutUntil[i]
+        const tx = cutting ? rimX - pr * 2.6 : HOME[i][0] * W
+        const ty = cutting ? rimY + (i - 2) * pr * 1.1 : HOME[i][1] * H
+        steerTo(p, tx, ty, AISPEED, dt)
+      }
+    }
+
+    // Step 4: minimal away offense — ball handler evades, others hold spots.
+    function runAwayOffense(dt: number) {
+      const bh = away[awayHandler]
+      let nd = Infinity
+      let near: P | null = null
+      for (const h of home) {
+        const d = dist(bh.x, bh.y, h.x, h.y)
+        if (d < nd) {
+          nd = d
+          near = h
+        }
+      }
+      if (near && nd < pr * 5) {
+        const ex = bh.x - near.x
+        const ey = bh.y - near.y
+        const el = Math.hypot(ex, ey) || 1
+        bh.x = clamp(bh.x + (ex / el) * AISPEED * 0.7 * dt, W * 0.05, W * 0.95)
+        bh.y = clamp(bh.y + (ey / el) * AISPEED * 0.7 * dt, band + pr, H - band - pr)
+      }
+      for (let i = 0; i < away.length; i++) {
+        if (i === awayHandler) continue
+        steerTo(away[i], AWAY[i][0] * W, AWAY[i][1] * H, AISPEED * 0.8, dt)
+      }
+    }
+
+    // Home man-defense: each non-active defender sits between his man + rim.
+    function runHomeDefenseAI(dt: number) {
+      for (let i = 0; i < home.length; i++) {
+        if (i === active) continue
+        const man = away[i % away.length]
+        const tx = man.x + (rimX - man.x) * 0.32
+        const ty = man.y + (rimY - man.y) * 0.32
+        steerTo(home[i], tx, ty, AISPEED, dt)
+      }
+    }
+
+    function doSwitch() {
+      active = (active + 1) % home.length
+      sfx.tap()
+    }
+
+    function doSteal() {
+      if (stealCd > 0) return
+      const d = dist(home[active].x, home[active].y, away[awayHandler].x, away[awayHandler].y)
+      if (d < pr * 2.7 && Math.random() < 0.5) {
+        possession = 'home'
+        setOnDefense(false)
+        phase = 'live'
+        result('STEAL!', 'make')
+        sfx.make()
+      } else {
+        stealCd = 0.7
+        sfx.aww()
+      }
+    }
+
     function update(dt: number) {
       t += dt
       if (shake > 0) shake = Math.max(0, shake - dt * 40)
@@ -267,65 +376,48 @@ export default function Court5v5() {
       a.x = clamp(a.x + vx * speed * dt, W * 0.05, W * 0.95)
       a.y = clamp(a.y + vy * speed * dt, band + pr, H - band - pr)
 
-      // --- teammate offense AI (the 4 you don't control) ---
-      // stagger basket cuts so one teammate slashes at a time
-      if (now > nextCutAt) {
-        nextCutAt = now + 2.4 + Math.random() * 1.8
-        const cands: number[] = []
-        for (let i = 0; i < home.length; i++) if (i !== active && now >= cutUntil[i]) cands.push(i)
-        if (cands.length) cutUntil[cands[(Math.random() * cands.length) | 0]] = now + 1.2
-      }
-      for (let i = 0; i < home.length; i++) {
-        if (i === active) continue
-        const p = home[i]
-        let dxT: number
-        let dyT: number
-        if (now < cutUntil[i]) {
-          // cut toward the rim with a little vertical spread
-          dxT = rimX - pr * 2.6
-          dyT = rimY + (i - 2) * pr * 1.1
-        } else {
-          // hold your spot
-          dxT = HOME[i][0] * W
-          dyT = HOME[i][1] * H
-        }
-        // spacing: push away from anyone too close
-        let sx = 0
-        let sy = 0
-        for (const o of [...home, ...away]) {
-          if (o === p) continue
-          const d = dist(p.x, p.y, o.x, o.y)
-          if (d > 0.1 && d < pr * 3) {
-            sx += (p.x - o.x) / d
-            sy += (p.y - o.y) / d
-          }
-        }
-        const tx = dxT + sx * pr * 1.6
-        const ty = dyT + sy * pr * 1.6
-        const ddx = tx - p.x
-        const ddy = ty - p.y
-        const dd = Math.hypot(ddx, ddy)
-        if (dd > 2) {
-          const s = Math.min(AISPEED * dt, dd)
-          p.x = clamp(p.x + (ddx / dd) * s, W * 0.05, W * 0.95)
-          p.y = clamp(p.y + (ddy / dd) * s, band + pr, H - band - pr)
-        }
-      }
+      if (stealCd > 0) stealCd -= dt
 
-      // offense intents (only while live and holding the ball)
-      if (phase === 'live') {
-        if (c.pass) {
+      if (possession === 'home') {
+        runOffenseAI(dt)
+        // offense intents
+        if (phase === 'live') {
+          if (c.pass) {
+            c.pass = false
+            doPass()
+          } else if (c.charging) {
+            charge = Math.min(1.15, charge + dt / 0.9)
+          }
+          if (c.release) {
+            c.release = false
+            if (charge > 0.05) doShoot(charge)
+            charge = 0
+          }
+        } else {
           c.pass = false
-          doPass()
-        } else if (c.charging) {
-          charge = Math.min(1.15, charge + dt / 0.9)
-        }
-        if (c.release) {
           c.release = false
-          if (charge > 0.05) doShoot(charge)
           charge = 0
         }
+        c.switchD = false
+        c.steal = false
+        c.block = false
       } else {
+        runAwayOffense(dt)
+        runHomeDefenseAI(dt)
+        // defense intents
+        if (c.switchD) {
+          c.switchD = false
+          doSwitch()
+        }
+        if (c.steal) {
+          c.steal = false
+          doSteal()
+        }
+        if (c.block) {
+          c.block = false
+          blockUntil = now + 0.45
+          sfx.shoot()
+        }
         c.pass = false
         c.release = false
         charge = 0
@@ -341,7 +433,6 @@ export default function Court5v5() {
         ball.z = Math.sin(Math.PI * k) * pr * 0.6
         if (passT >= 1) {
           active = passTo
-          ball.heldBy = active
           ball.z = 0
           phase = 'live'
         }
@@ -355,10 +446,25 @@ export default function Court5v5() {
           ball.z = ball.peak * Math.sin(Math.PI * ft)
         }
       } else if (phase === 'resolved' && now >= resolveAt) {
-        ball.heldBy = active
+        // possession flips to the other team (real rebound battle = step 7)
         ball.z = 0
-        phase = 'live'
         result('', '')
+        if (possession === 'home') {
+          possession = 'away'
+          awayHandler = 0
+          let best = 0
+          let bd = Infinity
+          for (let i = 0; i < home.length; i++) {
+            const d = dist(home[i].x, home[i].y, away[awayHandler].x, away[awayHandler].y)
+            if (d < bd) {
+              bd = d
+              best = i
+            }
+          }
+          active = best
+          setOnDefense(true)
+        }
+        phase = 'live'
       }
     }
 
@@ -482,7 +588,7 @@ export default function Court5v5() {
     function drawOverlays() {
       const a = home[active]
       // charge meter + live make-% while charging
-      if (phase === 'live' && controls.current.charging) {
+      if (phase === 'live' && possession === 'home' && controls.current.charging) {
         const bw = pr * 2.6
         const bx = a.x - bw / 2
         const by = a.y - pr * 2.6
@@ -500,6 +606,14 @@ export default function Court5v5() {
         ctx!.font = 'bold 13px system-ui'
         ctx!.textAlign = 'center'
         ctx!.fillText(`${Math.round(prob * 100)}%`, a.x, by - 5)
+      }
+      // contest ring while blocking (a real shot to block arrives in step 5)
+      if (now < blockUntil) {
+        ctx!.strokeStyle = '#b86bff'
+        ctx!.lineWidth = 3
+        ctx!.beginPath()
+        ctx!.arc(a.x, a.y - pr * 1.9, pr * 0.55, 0, Math.PI * 2)
+        ctx!.stroke()
       }
       // stamina bar (when sprinting / not full)
       if (stamina < 0.999) {
@@ -537,9 +651,9 @@ export default function Court5v5() {
         if (i === active && phase !== 'passing') drawActiveMarker(p)
         drawPlayer(p, homeColor)
       })
-      if (ball.heldBy !== null) {
-        const p = home[ball.heldBy]
-        drawBall(p.x + pr * 0.8, p.y + pr * 0.1, 0)
+      if (phase === 'live') {
+        const hp = possession === 'home' ? home[active] : away[awayHandler]
+        drawBall(hp.x + pr * 0.8, hp.y + pr * 0.1, 0)
       } else {
         drawBall(ball.x, ball.y, ball.z)
       }
@@ -627,56 +741,108 @@ export default function Court5v5() {
           <span className="cs-v">BETA</span>
         </div>
         <div className="court-hint-top">
-          <b>Left</b>: move · <b>SHOOT</b>: hold &amp; release in the green · <b>PASS</b> switches
-          control · <b>SPRINT</b> burns stamina
+          {onDefense ? (
+            <>
+              <b>DEFENSE</b> · <b>SWITCH</b> defender · <b>STEAL</b> near the ball · <b>BLOCK</b> a
+              shot · <b>SPRINT</b> to chase
+            </>
+          ) : (
+            <>
+              <b>Left</b>: move · <b>SHOOT</b>: hold &amp; release in the green · <b>PASS</b> switches
+              control · <b>SPRINT</b>
+            </>
+          )}
         </div>
       </div>
       <div className="court-canvas-wrap">
         <canvas ref={canvasRef} className="court-canvas" />
         {msg.text && <div className={`court-msg ${msg.kind}`}>{msg.text}</div>}
 
-        <div className="c5-buttons">
-          <button
-            className="c5-btn pass"
-            onPointerDown={press((c) => {
-              c.pass = true
-            })}
-          >
-            ➜<small>PASS</small>
-          </button>
-          <button
-            className="c5-btn shoot"
-            onPointerDown={press((c) => {
-              c.charging = true
-            })}
-            onPointerUp={press((c) => {
-              c.charging = false
-              c.release = true
-            })}
-            onPointerLeave={press((c) => {
-              if (c.charging) {
+        {onDefense ? (
+          <div className="c5-buttons">
+            <button
+              className="c5-btn pass"
+              onPointerDown={press((c) => {
+                c.switchD = true
+              })}
+            >
+              🔄<small>SWITCH</small>
+            </button>
+            <button
+              className="c5-btn shoot"
+              onPointerDown={press((c) => {
+                c.steal = true
+              })}
+            >
+              ✋<small>STEAL</small>
+            </button>
+            <button
+              className="c5-btn block"
+              onPointerDown={press((c) => {
+                c.block = true
+              })}
+            >
+              🚫<small>BLOCK</small>
+            </button>
+            <button
+              className="c5-btn sprint"
+              onPointerDown={press((c) => {
+                c.sprint = true
+              })}
+              onPointerUp={press((c) => {
+                c.sprint = false
+              })}
+              onPointerLeave={press((c) => {
+                c.sprint = false
+              })}
+            >
+              ⚡<small>SPRINT</small>
+            </button>
+          </div>
+        ) : (
+          <div className="c5-buttons">
+            <button
+              className="c5-btn pass"
+              onPointerDown={press((c) => {
+                c.pass = true
+              })}
+            >
+              ➜<small>PASS</small>
+            </button>
+            <button
+              className="c5-btn shoot"
+              onPointerDown={press((c) => {
+                c.charging = true
+              })}
+              onPointerUp={press((c) => {
                 c.charging = false
                 c.release = true
-              }
-            })}
-          >
-            🏀<small>SHOOT</small>
-          </button>
-          <button
-            className="c5-btn sprint"
-            onPointerDown={press((c) => {
-              c.sprint = true
-            })}
-            onPointerUp={press((c) => {
-              c.sprint = false
-            })}
-            onPointerLeave={press((c) => {
-              c.sprint = false
-            })}
-          >
-            ⚡<small>SPRINT</small>
-          </button>
-        </div>
+              })}
+              onPointerLeave={press((c) => {
+                if (c.charging) {
+                  c.charging = false
+                  c.release = true
+                }
+              })}
+            >
+              🏀<small>SHOOT</small>
+            </button>
+            <button
+              className="c5-btn sprint"
+              onPointerDown={press((c) => {
+                c.sprint = true
+              })}
+              onPointerUp={press((c) => {
+                c.sprint = false
+              })}
+              onPointerLeave={press((c) => {
+                c.sprint = false
+              })}
+            >
+              ⚡<small>SPRINT</small>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
