@@ -96,6 +96,7 @@ export default function Court5v5() {
     let awayHandler = 0
     let awayPossStart = 0
     let awayThinkAt = 0
+    let awayStealAt = 0
     let stealCd = 0
     let blockUntil = 0
     let phase: 'live' | 'passing' | 'shooting' | 'resolved' = 'live'
@@ -307,6 +308,50 @@ export default function Court5v5() {
       phase = 'live'
     }
 
+    function flipToAway(handlerIdx: number) {
+      possession = 'away'
+      awayHandler = handlerIdx
+      awayPossStart = now
+      awayThinkAt = now + 0.5
+      let best = 0
+      let bd = Infinity
+      for (let i = 0; i < home.length; i++) {
+        const d = dist(home[i].x, home[i].y, away[handlerIdx].x, away[handlerIdx].y)
+        if (d < bd) {
+          bd = d
+          best = i
+        }
+      }
+      active = best
+      setOnDefense(true)
+    }
+
+    // Step 6: opponent defense — guard your men, pressure the ball, steal.
+    function runAwayDefenseAI(dt: number) {
+      for (let i = 0; i < away.length; i++) {
+        const man = home[i % home.length]
+        const onBall = i % home.length === active
+        const tight = onBall ? 0.18 : 0.34
+        steerTo(
+          away[i],
+          man.x + (rimX - man.x) * tight,
+          man.y + (rimY - man.y) * tight,
+          onBall ? AISPEED * 0.96 : AISPEED * 0.82,
+          dt,
+          pr * 2.4,
+        )
+      }
+      if (phase === 'live' && now > awayStealAt) {
+        awayStealAt = now + 1.3 + Math.random() * 1.6
+        const def = away[active % away.length]
+        if (dist(def.x, def.y, home[active].x, home[active].y) < pr * 2.1 && Math.random() < 0.18) {
+          result('STOLEN!', 'miss')
+          sfx.aww()
+          flipToAway(active % away.length)
+        }
+      }
+    }
+
     function awayPass(target: number) {
       awayHandler = target
       sfx.pass()
@@ -455,6 +500,7 @@ export default function Court5v5() {
 
       if (possession === 'home') {
         runOffenseAI(dt)
+        runAwayDefenseAI(dt)
         // offense intents
         if (phase === 'live') {
           if (c.pass) {
