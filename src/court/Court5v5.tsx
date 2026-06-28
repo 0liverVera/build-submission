@@ -1,13 +1,15 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useGame } from '../state/store'
+import { sfx } from '../audio/sfx'
 
 /**
- * GAMEPLAY OVERHAUL — full controllable 5v5 (FIFA-style). Built behind a BETA
- * entry so the existing season games keep working until this is playable.
+ * GAMEPLAY OVERHAUL — controllable 5v5 (BETA). Season games still use the old
+ * model; this is sandboxed behind the 5v5 BETA hub entry.
  *
- * SUB-STEP 1: one active player controlled by a left-side virtual joystick,
- * clearly marked, moving smoothly on the landscape court. The other 9 players
- * are placed but static for now (AI arrives in later sub-steps).
+ * STEP 1: left joystick moves the active player.
+ * STEP 2: right-side OFFENSE buttons — Pass (control switches to the receiver),
+ *   charge-meter Shoot (auto-aimed at the rim; timing + openness + distance set
+ *   the make %), and Sprint (stamina). Teammates are still static (AI = step 3).
  */
 
 interface P {
@@ -16,7 +18,6 @@ interface P {
   team: 'home' | 'away'
 }
 
-// Half-court 5v5 attacking the right hoop. Relative spots (rx,ry).
 const HOME: [number, number][] = [
   [0.2, 0.5],
   [0.38, 0.24],
@@ -32,10 +33,22 @@ const AWAY: [number, number][] = [
   [0.68, 0.6],
 ]
 
+const dist = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by)
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+
+interface Controls {
+  sprint: boolean
+  charging: boolean
+  release: boolean
+  pass: boolean
+}
+
 export default function Court5v5() {
   const navigate = useGame((s) => s.navigate)
   const franchise = useGame((s) => s.franchise)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const controls = useRef<Controls>({ sprint: false, charging: false, release: false, pass: false })
+  const [msg, setMsg] = useState<{ text: string; kind: string }>({ text: '', kind: '' })
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -60,7 +73,29 @@ export default function Court5v5() {
 
     const home: P[] = HOME.map(() => ({ x: 0, y: 0, team: 'home' }))
     const away: P[] = AWAY.map(() => ({ x: 0, y: 0, team: 'away' }))
-    let active = 0 // index into home
+    let active = 0
+
+    const ball = { x: 0, y: 0, z: 0, t: 0, dur: 0.7, peak: 60, heldBy: 0 as number | null }
+    let phase: 'live' | 'passing' | 'shooting' | 'resolved' = 'live'
+    let charge = 0
+    let stamina = 1
+    let netFlash = 0
+    let netSwish = 0
+    let crowdJump = 0
+    let shake = 0
+    let now = 0
+    let resolveAt = 0
+    let t = 0
+
+    // shot/pass scratch
+    const shotFrom = { x: 0, y: 0 }
+    const land = { x: 0, y: 0 }
+    let made = false
+    let shotKind: '2' | '3' | 'layup' = '2'
+    let passFrom = 0
+    let passTo = 0
+    let passT = 0
+    let passDur = 0.25
 
     // joystick
     let joyId: number | null = null
@@ -69,7 +104,8 @@ export default function Court5v5() {
     let vx = 0
     let vy = 0
     let maxR = 60
-    let t = 0
+
+    const result = (text: string, kind: string) => setMsg({ text, kind })
 
     function layout() {
       const rect = canvas!.getBoundingClientRect()
@@ -84,7 +120,7 @@ export default function Court5v5() {
       pr = Math.max(12, H * 0.062)
       ballR = pr * 0.55
       band = H * 0.07
-      SPEED = H * 1.25
+      SPEED = H * 1.15
       maxR = Math.min(W, H) * 0.12
       home.forEach((p, i) => {
         p.x = HOME[i][0] * W
@@ -96,13 +132,187 @@ export default function Court5v5() {
       })
     }
 
-    function update(dt: number) {
-      t += dt
-      const a = home[active]
-      a.x = Math.max(W * 0.05, Math.min(W * 0.95, a.x + vx * SPEED * dt))
-      a.y = Math.max(band + pr, Math.min(H - band - pr, a.y + vy * SPEED * dt))
+    const nearestAwayDist = (p: P) => {
+      let best = Infinity
+      for (const d of away) best = Math.min(best, dist(p.x, p.y, d.x, d.y))
+      return best
+    }
+    const timingFactor = (c: number) => {
+      if (c >= 0.78 && c <= 0.95) return 1.18
+      const dd = Math.min(Math.abs(c - 0.78), Math.abs(c - 0.95))
+      return Math.max(0.6, 1.18 - dd * 1.6)
+    }
+    function shotInfo(p: P) {
+      const d = dist(p.x, p.y, rimX, rimY)
+      const layup = d < pr * 4.2
+      const three = !layup && d > arcR
+      const open = nearestAwayDist(p) > pr * 4
+      const baseP = layup ? 0.8 : three ? 0.42 : 0.56
+      return { d, layup, three, open, baseP }
     }
 
+    function bestPassTarget() {
+      let best = -1
+      let score = -Infinity
+      home.forEach((p, i) => {
+        if (i === active) return
+        const s = nearestAwayDist(p) + (p.x - home[active].x) * 0.3
+        if (s > score) {
+          score = s
+          best = i
+        }
+      })
+      return best
+    }
+
+    function doPass() {
+      const target = bestPassTarget()
+      if (target < 0) return
+      passFrom = active
+      passTo = target
+      passT = 0
+      const a = home[passFrom]
+      const b = home[passTo]
+      passDur = clamp(dist(a.x, a.y, b.x, b.y) / (W * 3), 0.16, 0.4)
+      ball.heldBy = null
+      phase = 'passing'
+      sfx.pass()
+    }
+
+    function doShoot(c: number) {
+      const a = home[active]
+      const info = shotInfo(a)
+      shotKind = info.layup ? 'layup' : info.three ? '3' : '2'
+      let prob = info.baseP * (info.open ? 1.12 : 0.62) * timingFactor(c)
+      prob = clamp(prob, 0.05, 0.96)
+      made = Math.random() < prob
+      shotFrom.x = a.x
+      shotFrom.y = a.y
+      ball.heldBy = null
+      ball.x = a.x
+      ball.y = a.y
+      ball.z = 0
+      ball.t = 0
+      ball.dur = info.layup ? 0.45 : 0.72
+      ball.peak = info.layup ? H * 0.12 : clamp(info.d * 0.26, H * 0.14, H * 0.4)
+      if (made) {
+        land.x = rimX
+        land.y = rimY
+      } else {
+        land.x = rimX + (Math.random() * 2 - 1) * pr * 1.3
+        land.y = rimY + (Math.random() * 2 - 1) * pr * 1.3
+      }
+      phase = 'shooting'
+      sfx.shoot()
+    }
+
+    function resolveShotFlight() {
+      if (made) {
+        netFlash = 0.45
+        netSwish = 0.5
+        crowdJump = 0.6
+        ball.x = rimX
+        ball.y = rimY
+        ball.z = 0
+        if (shotKind === 'layup') {
+          const dunk = dist(shotFrom.x, shotFrom.y, rimX, rimY) < pr * 2.6
+          result(dunk ? 'DUNK!' : 'LAYUP!', 'dunk')
+          dunk ? sfx.dunk() : sfx.make()
+          shake = Math.max(shake, dunk ? 9 : 4)
+        } else if (shotKind === '3') {
+          result('SWISH · 3!', 'three')
+          sfx.three()
+          sfx.swish()
+          shake = Math.max(shake, 8)
+        } else {
+          result('BUCKET!', 'make')
+          sfx.make()
+          sfx.swish()
+          shake = Math.max(shake, 4)
+        }
+      } else {
+        result('MISS', 'miss')
+        sfx.rim()
+        sfx.aww()
+        shake = Math.max(shake, 2)
+      }
+      phase = 'resolved'
+      resolveAt = now + 0.9
+    }
+
+    function update(dt: number) {
+      t += dt
+      if (shake > 0) shake = Math.max(0, shake - dt * 40)
+      if (netFlash > 0) netFlash = Math.max(0, netFlash - dt)
+      if (netSwish > 0) netSwish = Math.max(0, netSwish - dt)
+      if (crowdJump > 0) crowdJump = Math.max(0, crowdJump - dt)
+
+      const c = controls.current
+      // sprint + stamina
+      let speed = SPEED
+      if (c.sprint && stamina > 0.02) {
+        speed *= 1.7
+        stamina = Math.max(0, stamina - dt * 0.5)
+      } else {
+        stamina = Math.min(1, stamina + dt * 0.3)
+      }
+
+      // move active
+      const a = home[active]
+      a.x = clamp(a.x + vx * speed * dt, W * 0.05, W * 0.95)
+      a.y = clamp(a.y + vy * speed * dt, band + pr, H - band - pr)
+
+      // offense intents (only while live and holding the ball)
+      if (phase === 'live') {
+        if (c.pass) {
+          c.pass = false
+          doPass()
+        } else if (c.charging) {
+          charge = Math.min(1.15, charge + dt / 0.9)
+        }
+        if (c.release) {
+          c.release = false
+          if (charge > 0.05) doShoot(charge)
+          charge = 0
+        }
+      } else {
+        c.pass = false
+        c.release = false
+        charge = 0
+      }
+
+      if (phase === 'passing') {
+        passT += dt / passDur
+        const pa = home[passFrom]
+        const pb = home[passTo]
+        const k = clamp(passT, 0, 1)
+        ball.x = pa.x + (pb.x - pa.x) * k
+        ball.y = pa.y + (pb.y - pa.y) * k
+        ball.z = Math.sin(Math.PI * k) * pr * 0.6
+        if (passT >= 1) {
+          active = passTo
+          ball.heldBy = active
+          ball.z = 0
+          phase = 'live'
+        }
+      } else if (phase === 'shooting') {
+        ball.t += dt
+        const ft = ball.t / ball.dur
+        if (ft >= 1) resolveShotFlight()
+        else {
+          ball.x = shotFrom.x + (land.x - shotFrom.x) * ft
+          ball.y = shotFrom.y + (land.y - shotFrom.y) * ft
+          ball.z = ball.peak * Math.sin(Math.PI * ft)
+        }
+      } else if (phase === 'resolved' && now >= resolveAt) {
+        ball.heldBy = active
+        ball.z = 0
+        phase = 'live'
+        result('', '')
+      }
+    }
+
+    // ---- drawing ----
     function drawCourt() {
       ctx!.fillStyle = '#c98a4a'
       ctx!.fillRect(0, 0, W, H)
@@ -111,11 +321,12 @@ export default function Court5v5() {
       ctx!.fillStyle = '#1a1f33'
       ctx!.fillRect(0, 0, W, band)
       ctx!.fillRect(0, H - band, W, band)
+      const hop = crowdJump > 0 ? Math.sin((1 - Math.min(1, crowdJump / 0.6)) * Math.PI) * 5 : 0
       for (let i = 0; i < 60; i++) {
         ctx!.fillStyle = ['#3a4170', '#4a3a6a', '#5a4a3a', '#3a5a4a'][i % 4]
         const cx = (i * 41) % W
         ctx!.beginPath()
-        ctx!.arc(cx + 6, i % 2 === 0 ? band * 0.5 : H - band * 0.5, 3.5, 0, Math.PI * 2)
+        ctx!.arc(cx + 6, (i % 2 === 0 ? band * 0.5 : H - band * 0.5) - hop, 3.5, 0, Math.PI * 2)
         ctx!.fill()
       }
       ctx!.strokeStyle = 'rgba(255,255,255,0.16)'
@@ -131,7 +342,6 @@ export default function Court5v5() {
       ctx!.fillText(logo, W * 0.4, H * 0.5)
       ctx!.globalAlpha = 1
       ctx!.textBaseline = 'alphabetic'
-      // lane + arc + hoop
       ctx!.strokeStyle = 'rgba(255,255,255,0.5)'
       ctx!.lineWidth = 2.5
       const laneH = H * 0.42
@@ -142,7 +352,7 @@ export default function Court5v5() {
       ctx!.beginPath()
       ctx!.arc(rimX, rimY, arcR, 0.62 * Math.PI, 1.38 * Math.PI)
       ctx!.stroke()
-      // hoop
+      // hoop + net
       ctx!.fillStyle = '#eef1f6'
       ctx!.fillRect(rimX + pr * 1.4, rimY - H * 0.11, 6, H * 0.22)
       ctx!.strokeStyle = '#ff6a2a'
@@ -150,6 +360,16 @@ export default function Court5v5() {
       ctx!.beginPath()
       ctx!.ellipse(rimX, rimY, pr * 0.5, pr * 0.8, 0, 0, Math.PI * 2)
       ctx!.stroke()
+      ctx!.strokeStyle = netFlash > 0 ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)'
+      ctx!.lineWidth = 1.4
+      const sw = netSwish > 0 ? netSwish / 0.5 : 0
+      for (let i = -2; i <= 2; i++) {
+        const sway = Math.sin((0.5 - netSwish) * 26 + i * 1.5) * pr * 0.18 * sw
+        ctx!.beginPath()
+        ctx!.moveTo(rimX, rimY + (i / 2) * pr * 0.7)
+        ctx!.lineTo(rimX - pr * 0.7 - sway, rimY + (i / 4) * pr * 0.7 + sw * pr * 0.25)
+        ctx!.stroke()
+      }
     }
 
     function drawPlayer(p: P, color: string) {
@@ -178,7 +398,6 @@ export default function Court5v5() {
       ctx!.beginPath()
       ctx!.ellipse(p.x, p.y + pr * 0.85, pr * 1.15 * pulse, pr * 0.5 * pulse, 0, 0, Math.PI * 2)
       ctx!.stroke()
-      // arrow above
       ctx!.fillStyle = '#ffcf4a'
       const ay = p.y - pr * 1.6 - Math.sin(t * 6) * 2
       ctx!.beginPath()
@@ -189,18 +408,59 @@ export default function Court5v5() {
       ctx!.fill()
     }
 
-    function drawBall(x: number, y: number) {
+    function drawBall(x: number, y: number, z: number) {
+      if (z > 1) {
+        ctx!.fillStyle = 'rgba(0,0,0,0.2)'
+        ctx!.beginPath()
+        ctx!.ellipse(x, y, ballR * 0.8, ballR * 0.4, 0, 0, Math.PI * 2)
+        ctx!.fill()
+      }
+      const by = y - z
       ctx!.fillStyle = '#ff8a3d'
       ctx!.beginPath()
-      ctx!.arc(x, y, ballR, 0, Math.PI * 2)
+      ctx!.arc(x, by, ballR, 0, Math.PI * 2)
       ctx!.fill()
       ctx!.strokeStyle = 'rgba(80,30,0,0.7)'
       ctx!.lineWidth = 1.2
       ctx!.beginPath()
-      ctx!.arc(x, y, ballR, 0, Math.PI * 2)
-      ctx!.moveTo(x - ballR, y)
-      ctx!.lineTo(x + ballR, y)
+      ctx!.arc(x, by, ballR, 0, Math.PI * 2)
+      ctx!.moveTo(x - ballR, by)
+      ctx!.lineTo(x + ballR, by)
       ctx!.stroke()
+    }
+
+    function drawOverlays() {
+      const a = home[active]
+      // charge meter + live make-% while charging
+      if (phase === 'live' && controls.current.charging) {
+        const bw = pr * 2.6
+        const bx = a.x - bw / 2
+        const by = a.y - pr * 2.6
+        ctx!.fillStyle = 'rgba(0,0,0,0.5)'
+        ctx!.fillRect(bx, by, bw, 7)
+        // sweet band
+        ctx!.fillStyle = 'rgba(90,230,140,0.55)'
+        ctx!.fillRect(bx + bw * 0.78, by, bw * 0.17, 7)
+        ctx!.fillStyle = '#ffcf4a'
+        ctx!.fillRect(bx, by, bw * clamp(charge, 0, 1), 7)
+        // make %
+        const info = shotInfo(a)
+        const prob = clamp(info.baseP * (info.open ? 1.12 : 0.62) * timingFactor(charge), 0.05, 0.96)
+        ctx!.fillStyle = '#fff'
+        ctx!.font = 'bold 13px system-ui'
+        ctx!.textAlign = 'center'
+        ctx!.fillText(`${Math.round(prob * 100)}%`, a.x, by - 5)
+      }
+      // stamina bar (when sprinting / not full)
+      if (stamina < 0.999) {
+        const bw = pr * 1.6
+        const bx = a.x - bw / 2
+        const by = a.y + pr * 1.2
+        ctx!.fillStyle = 'rgba(0,0,0,0.5)'
+        ctx!.fillRect(bx, by, bw, 4)
+        ctx!.fillStyle = stamina > 0.3 ? '#3aa0ff' : '#e8503a'
+        ctx!.fillRect(bx, by, bw * stamina, 4)
+      }
     }
 
     function drawJoystick() {
@@ -219,20 +479,29 @@ export default function Court5v5() {
     }
 
     function render() {
+      ctx!.save()
+      if (shake > 0) ctx!.translate((Math.random() * 2 - 1) * shake, (Math.random() * 2 - 1) * shake)
       drawCourt()
       for (const p of away) drawPlayer(p, awayColor)
       home.forEach((p, i) => {
-        if (i === active) drawActiveMarker(p)
+        if (i === active && phase !== 'passing') drawActiveMarker(p)
         drawPlayer(p, homeColor)
       })
-      const a = home[active]
-      drawBall(a.x + pr * 0.8, a.y + pr * 0.1)
+      if (ball.heldBy !== null) {
+        const p = home[ball.heldBy]
+        drawBall(p.x + pr * 0.8, p.y + pr * 0.1, 0)
+      } else {
+        drawBall(ball.x, ball.y, ball.z)
+      }
+      drawOverlays()
+      ctx!.restore()
       drawJoystick()
     }
 
     let raf = 0
     let last = performance.now()
     function frame(time: number) {
+      now = time / 1000
       const dt = Math.min(0.034, (time - last) / 1000)
       last = time
       update(dt)
@@ -240,12 +509,12 @@ export default function Court5v5() {
       raf = requestAnimationFrame(frame)
     }
 
-    function local(e: PointerEvent) {
+    function localPt(e: PointerEvent) {
       const r = canvas!.getBoundingClientRect()
       return { x: e.clientX - r.left, y: e.clientY - r.top }
     }
     function onDown(e: PointerEvent) {
-      const p = local(e)
+      const p = localPt(e)
       if (p.x < W * 0.55 && joyId === null) {
         joyId = e.pointerId
         baseX = p.x
@@ -258,7 +527,7 @@ export default function Court5v5() {
     }
     function onMove(e: PointerEvent) {
       if (e.pointerId !== joyId) return
-      const p = local(e)
+      const p = localPt(e)
       const dx = p.x - baseX
       const dy = p.y - baseY
       const len = Math.hypot(dx, dy)
@@ -292,6 +561,11 @@ export default function Court5v5() {
     }
   }, [franchise])
 
+  const press = (fn: (c: Controls) => void) => (e: React.PointerEvent) => {
+    e.preventDefault()
+    fn(controls.current)
+  }
+
   return (
     <div className="court-wrap">
       <div className="court-hud">
@@ -303,11 +577,56 @@ export default function Court5v5() {
           <span className="cs-v">BETA</span>
         </div>
         <div className="court-hint-top">
-          Drag on the <b>left</b> side to move your highlighted player
+          <b>Left</b>: move · <b>SHOOT</b>: hold &amp; release in the green · <b>PASS</b> switches
+          control · <b>SPRINT</b> burns stamina
         </div>
       </div>
       <div className="court-canvas-wrap">
         <canvas ref={canvasRef} className="court-canvas" />
+        {msg.text && <div className={`court-msg ${msg.kind}`}>{msg.text}</div>}
+
+        <div className="c5-buttons">
+          <button
+            className="c5-btn pass"
+            onPointerDown={press((c) => {
+              c.pass = true
+            })}
+          >
+            ➜<small>PASS</small>
+          </button>
+          <button
+            className="c5-btn shoot"
+            onPointerDown={press((c) => {
+              c.charging = true
+            })}
+            onPointerUp={press((c) => {
+              c.charging = false
+              c.release = true
+            })}
+            onPointerLeave={press((c) => {
+              if (c.charging) {
+                c.charging = false
+                c.release = true
+              }
+            })}
+          >
+            🏀<small>SHOOT</small>
+          </button>
+          <button
+            className="c5-btn sprint"
+            onPointerDown={press((c) => {
+              c.sprint = true
+            })}
+            onPointerUp={press((c) => {
+              c.sprint = false
+            })}
+            onPointerLeave={press((c) => {
+              c.sprint = false
+            })}
+          >
+            ⚡<small>SPRINT</small>
+          </button>
+        </div>
       </div>
     </div>
   )

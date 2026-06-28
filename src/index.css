@@ -771,6 +771,66 @@ body {
   color: var(--gold);
 }
 
+/* --- 5v5 on-screen action buttons (overhaul) --- */
+.c5-buttons {
+  position: absolute;
+  right: calc(env(safe-area-inset-right) + 14px);
+  bottom: calc(env(safe-area-inset-bottom) + 16px);
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 10px;
+  align-items: end;
+  justify-items: center;
+  touch-action: none;
+}
+.c5-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  border: none;
+  border-radius: 50%;
+  font-size: 22px;
+  color: var(--ink);
+  cursor: pointer;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.4);
+}
+.c5-btn small {
+  font-family: var(--font-pixel);
+  font-size: 7px;
+  margin-top: 2px;
+}
+.c5-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+}
+.c5-btn.shoot {
+  grid-column: 2;
+  grid-row: 1;
+  width: 78px;
+  height: 78px;
+  font-size: 28px;
+  background: linear-gradient(180deg, #ffa860, var(--orange-deep));
+  color: #fff;
+}
+.c5-btn.pass {
+  grid-column: 1;
+  grid-row: 1;
+  background: linear-gradient(180deg, #5aa0e8, var(--team-blue));
+  color: #fff;
+}
+.c5-btn.sprint {
+  grid-column: 1;
+  grid-row: 2;
+  background: linear-gradient(180deg, #ffe27a, var(--gold-deep));
+}
+
 /* --- Rotate-your-device gate --- */
 .rotate-gate {
   position: fixed;
