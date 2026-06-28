@@ -3,6 +3,7 @@ import MainMenu from './screens/MainMenu'
 import NewFranchise from './screens/NewFranchise'
 import Hub from './screens/Hub'
 import Placeholder from './screens/Placeholder'
+import CourtGame from './court/CourtGame'
 
 export default function App() {
   const screen = useGame((s) => s.screen)
@@ -12,13 +13,7 @@ export default function App() {
       {screen === 'menu' && <MainMenu />}
       {screen === 'newFranchise' && <NewFranchise />}
       {screen === 'hub' && <Hub />}
-      {screen === 'game' && (
-        <Placeholder
-          title="GAME DAY"
-          icon="🏀"
-          note="The on-court action — the heart of the game — arrives in Phase 2."
-        />
-      )}
+      {screen === 'game' && <CourtGame />}
       {screen === 'roster' && (
         <Placeholder title="ROSTER" icon="👥" note="Players & ratings arrive in Phase 4." />
       )}
