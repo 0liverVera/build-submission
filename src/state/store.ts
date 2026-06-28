@@ -71,17 +71,38 @@ function rebuildRoster(players: Player[]): Player[] {
 const SAVE_KEY = 'hoop_save_v1'
 
 function loadSave(): Franchise | null {
+  let raw: string | null = null
   try {
-    const raw = localStorage.getItem(SAVE_KEY)
-    if (!raw) return null
-    const f = JSON.parse(raw) as Franchise
-    // Migrate older saves (Phase 4 rosters, Phase 5 facilities/fan interest).
+    raw = localStorage.getItem(SAVE_KEY)
+  } catch {
+    return null
+  }
+  if (!raw) return null
+
+  let f: Franchise
+  try {
+    f = JSON.parse(raw) as Franchise
+  } catch {
+    // Corrupt JSON → drop it so the player gets a clean New Franchise.
+    try {
+      localStorage.removeItem(SAVE_KEY)
+    } catch {
+      /* ignore */
+    }
+    return null
+  }
+
+  try {
+    // Basic shape check — bail to a fresh start if the core identity is gone.
+    if (!f || typeof f !== 'object' || typeof f.teamName !== 'string') return null
+
+    // Migrations + defensive backfills (any field can be missing/malformed).
     let dirty = false
-    if (!f.roster || !f.roster.length) {
+    if (!Array.isArray(f.roster) || f.roster.length === 0) {
       f.roster = generateRoster()
       dirty = true
     }
-    if (!f.facilities) {
+    if (!f.facilities || typeof f.facilities !== 'object') {
       f.facilities = { ...DEFAULT_FACILITIES }
       dirty = true
     }
@@ -89,18 +110,20 @@ function loadSave(): Franchise | null {
       f.fanInterest = 50
       dirty = true
     }
-    if (!f.league || !f.seasonState) {
+    if (!Array.isArray(f.league) || !f.seasonState || typeof f.seasonState !== 'object') {
       Object.assign(f, initSeason())
       dirty = true
     }
-    // Phase 7: backfill salaries on older saves.
+    if (!Array.isArray(f.hallOfFame)) {
+      f.hallOfFame = []
+      dirty = true
+    }
     for (const p of f.roster) {
       if (typeof p.salary !== 'number') {
         p.salary = salaryFor(p)
         dirty = true
       }
     }
-    // Phase 10 defaults.
     if (f.unlimited === undefined) {
       f.unlimited = false
       dirty = true
@@ -109,9 +132,14 @@ function loadSave(): Franchise | null {
       f.retryTokens = 0
       dirty = true
     }
+    if (typeof f.credits !== 'number') {
+      f.credits = 50
+      dirty = true
+    }
     if (dirty) writeSave(f)
     return f
   } catch {
+    // Any unexpected shape problem → fail safe to no-save rather than crash.
     return null
   }
 }
