@@ -9,7 +9,6 @@ import Season from './screens/Season'
 import Offseason from './screens/Offseason'
 import Store from './screens/Store'
 import TeamEditor from './screens/TeamEditor'
-import GameScreen from './court/GameScreen'
 import Court5v5 from './court/Court5v5'
 import RotateGate from './ui/RotateGate'
 import { useEffect, useState } from 'react'
@@ -79,7 +78,7 @@ export default function App() {
       {screen === 'menu' && <MainMenu />}
       {screen === 'newFranchise' && <NewFranchise />}
       {screen === 'hub' && <Hub />}
-      {screen === 'game' && <GameScreen />}
+      {screen === 'game' && <Court5v5 matchMode />}
       {screen === 'season' && <Season />}
       {screen === 'offseason' && <Offseason />}
       {screen === 'roster' && <Roster />}

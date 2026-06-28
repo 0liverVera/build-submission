@@ -55,7 +55,12 @@ interface Controls {
   block: boolean
 }
 
-export default function Court5v5() {
+const mmss = (s: number) => {
+  const v = Math.max(0, Math.ceil(s))
+  return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`
+}
+
+export default function Court5v5({ matchMode = false }: { matchMode?: boolean }) {
   const navigate = useGame((s) => s.navigate)
   const franchise = useGame((s) => s.franchise)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -70,6 +75,9 @@ export default function Court5v5() {
   })
   const [msg, setMsg] = useState<{ text: string; kind: string }>({ text: '', kind: '' })
   const [onDefense, setOnDefense] = useState(false)
+  const [hud, setHud] = useState({ us: 0, them: 0, quarter: 1, clock: 0, shot: 0, homeAbbr: 'HOM', awayAbbr: 'OPP' })
+  const [final, setFinal] = useState<{ us: number; them: number; win: boolean } | null>(null)
+  const oppColorUi = matchMode ? useGame.getState().currentOpponent()?.color ?? '#e8503a' : '#e8503a'
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -77,10 +85,32 @@ export default function Court5v5() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
+    // match context (ratings + scheduled opponent)
+    const st0 = useGame.getState()
+    const starters = (st0.franchise?.roster ?? []).slice(0, 5)
+    const homeShoot = starters.length ? starters.reduce((a, p) => a + p.shooting, 0) / starters.length : 6
+    const opp0 = matchMode ? st0.currentOpponent() : null
+    const homeShootF = 0.82 + homeShoot * 0.03
+    const awayShootF = 0.82 + (opp0?.offense ?? 6) * 0.03
+    const homeAbbr = (st0.franchise?.teamName ?? 'HOM').slice(0, 3).toUpperCase()
+    const awayAbbr = opp0?.abbr ?? 'OPP'
+
     const homeColor = franchise?.colorPrimary ?? '#ff8a3d'
-    const awayColor = '#e8503a'
+    const awayColor = (matchMode && opp0?.color) || '#e8503a'
     const logo = (franchise?.teamName?.[0] ?? 'H').toUpperCase()
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
+
+    // match clock / score
+    const QUARTER_SECONDS = 80
+    const SHOT_CLOCK = 20
+    let us = 0
+    let them = 0
+    let quarter = 1
+    let gameClock = QUARTER_SECONDS
+    let shotClock = SHOT_CLOCK
+    let ended = false
+    let prevPossession: 'home' | 'away' = 'home'
+    let lastHudKey = ''
 
     let W = 0
     let H = 0
@@ -225,7 +255,7 @@ export default function Court5v5() {
       const a = home[active]
       const info = shotInfo(a, away)
       shotKind = info.layup ? 'layup' : info.three ? '3' : '2'
-      let prob = info.baseP * (info.open ? 1.12 : 0.62) * timingFactor(c)
+      let prob = info.baseP * (info.open ? 1.12 : 0.62) * timingFactor(c) * homeShootF
       prob = clamp(prob, 0.05, 0.96)
       made = Math.random() < prob
       shotFrom.x = a.x
@@ -249,6 +279,9 @@ export default function Court5v5() {
 
     function resolveShotFlight() {
       if (made) {
+        const pts = shotKind === '3' ? 3 : 2
+        if (possession === 'home') us += pts
+        else them += pts
         netFlash = 0.45
         netSwish = 0.5
         crowdJump = 0.6
@@ -390,7 +423,7 @@ export default function Court5v5() {
       }
       const info = shotInfo(bh, home)
       shotKind = info.layup ? 'layup' : info.three ? '3' : '2'
-      let prob = info.baseP * (info.open ? 1.05 : 0.55) * (contestD < pr * 3 ? 0.62 : 1)
+      let prob = info.baseP * (info.open ? 1.05 : 0.55) * (contestD < pr * 3 ? 0.62 : 1) * awayShootF
       prob = clamp(prob, 0.05, 0.92)
       made = Math.random() < prob
       shotFrom.x = bh.x
@@ -527,12 +560,57 @@ export default function Court5v5() {
       }
     }
 
+    function endGame() {
+      ended = true
+      setFinal({ us, them, win: us > them })
+    }
+    function pushHud() {
+      const key = `${us}|${them}|${quarter}|${Math.ceil(gameClock)}|${Math.ceil(shotClock)}`
+      if (key !== lastHudKey) {
+        lastHudKey = key
+        setHud({
+          us,
+          them,
+          quarter,
+          clock: Math.max(0, Math.ceil(gameClock)),
+          shot: Math.max(0, Math.ceil(shotClock)),
+          homeAbbr,
+          awayAbbr,
+        })
+      }
+    }
+
     function update(dt: number) {
       t += dt
       if (shake > 0) shake = Math.max(0, shake - dt * 40)
       if (netFlash > 0) netFlash = Math.max(0, netFlash - dt)
       if (netSwish > 0) netSwish = Math.max(0, netSwish - dt)
       if (crowdJump > 0) crowdJump = Math.max(0, crowdJump - dt)
+
+      // --- match clock / quarters / shot clock (match mode only) ---
+      if (matchMode && !ended) {
+        if (phase === 'live') {
+          gameClock -= dt
+          shotClock -= dt
+          if (shotClock <= 0) {
+            result('SHOT CLOCK', 'miss')
+            if (possession === 'home') flipToAway(0)
+            else flipToHome()
+          }
+          if (gameClock <= 0) {
+            if (quarter >= 4) endGame()
+            else {
+              quarter += 1
+              gameClock = QUARTER_SECONDS
+            }
+          }
+        }
+      }
+      if (ended) return
+      if (possession !== prevPossession) {
+        prevPossession = possession
+        shotClock = SHOT_CLOCK
+      }
 
       const c = controls.current
       // sprint + stamina
@@ -837,6 +915,7 @@ export default function Court5v5() {
       last = time
       update(dt)
       render()
+      if (matchMode) pushHud()
       raf = requestAnimationFrame(frame)
     }
 
@@ -890,7 +969,19 @@ export default function Court5v5() {
       canvas.removeEventListener('pointerup', onUp)
       canvas.removeEventListener('pointercancel', onUp)
     }
-  }, [franchise])
+  }, [franchise, matchMode])
+
+  function finishGame() {
+    if (!final) return
+    const g = useGame.getState()
+    const fan = g.franchise?.fanInterest ?? 50
+    const credits = 20 + (final.win ? 30 : 0) + Math.floor(final.us / 4) + Math.floor(fan / 10)
+    g.recordGameResult(final.win, credits)
+    g.advanceSeason(final.win)
+    const phaseNow = useGame.getState().franchise?.seasonState.phase
+    if (phaseNow === 'regular' && g.triggerPressEvent()) g.navigate('press')
+    else g.navigate('season')
+  }
 
   const press = (fn: (c: Controls) => void) => (e: React.PointerEvent) => {
     e.preventDefault()
@@ -899,31 +990,76 @@ export default function Court5v5() {
 
   return (
     <div className="court-wrap">
-      <div className="court-hud">
-        <button className="court-back" onClick={() => navigate('hub')} aria-label="Back">
-          ‹
-        </button>
-        <div className="court-stat">
-          <span className="cs-k">5v5</span>
-          <span className="cs-v">BETA</span>
+      {matchMode ? (
+        <div className="scoreboard">
+          <button
+            className="court-back"
+            onClick={() => navigate('season')}
+            aria-label="Back"
+          >
+            ‹
+          </button>
+          <div className="sb-team" style={{ ['--p']: franchise?.colorPrimary } as React.CSSProperties}>
+            <span className="sb-abbr">{hud.homeAbbr}</span>
+            <span className="sb-score">{hud.us}</span>
+          </div>
+          <div className="sb-center">
+            <span className="sb-q">Q{hud.quarter}</span>
+            <span className={`sb-clock${hud.clock <= 10 ? ' clutch' : ''}`}>{mmss(hud.clock)}</span>
+            <span className="sb-shot">:{hud.shot}</span>
+          </div>
+          <div className="sb-team opp" style={{ ['--p']: oppColorUi } as React.CSSProperties}>
+            <span className="sb-score">{hud.them}</span>
+            <span className="sb-abbr">{hud.awayAbbr}</span>
+          </div>
         </div>
-        <div className="court-hint-top">
-          {onDefense ? (
-            <>
-              <b>DEFENSE</b> · <b>SWITCH</b> defender · <b>STEAL</b> near the ball · <b>BLOCK</b> a
-              shot · <b>SPRINT</b> to chase
-            </>
-          ) : (
-            <>
-              <b>Left</b>: move · <b>SHOOT</b>: hold &amp; release in the green · <b>PASS</b> switches
-              control · <b>SPRINT</b>
-            </>
-          )}
+      ) : (
+        <div className="court-hud">
+          <button className="court-back" onClick={() => navigate('hub')} aria-label="Back">
+            ‹
+          </button>
+          <div className="court-stat">
+            <span className="cs-k">5v5</span>
+            <span className="cs-v">BETA</span>
+          </div>
+          <div className="court-hint-top">
+            {onDefense ? (
+              <>
+                <b>DEFENSE</b> · <b>SWITCH</b> · <b>STEAL</b> near ball · <b>BLOCK</b> a shot ·{' '}
+                <b>SPRINT</b>
+              </>
+            ) : (
+              <>
+                <b>Left</b>: move · <b>SHOOT</b>: hold &amp; release in the green · <b>PASS</b>{' '}
+                switches control · <b>SPRINT</b>
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
       <div className="court-canvas-wrap">
         <canvas ref={canvasRef} className="court-canvas" />
         {msg.text && <div className={`court-msg ${msg.kind}`}>{msg.text}</div>}
+
+        {final && (
+          <div className="c5-final">
+            <div className="c5-final-card">
+              <div className={`final-title ${final.win ? 'win' : 'loss'}`}>
+                {final.win ? 'WIN!' : 'LOSS'}
+              </div>
+              <div className="break-score">
+                <span>{hud.homeAbbr}</span>
+                <b>
+                  {final.us} – {final.them}
+                </b>
+                <span>{hud.awayAbbr}</span>
+              </div>
+              <button className="btn primary" onClick={finishGame}>
+                CONTINUE ▶
+              </button>
+            </div>
+          </div>
+        )}
 
         {onDefense ? (
           <div className="c5-buttons">

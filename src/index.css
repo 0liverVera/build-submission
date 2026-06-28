@@ -771,6 +771,33 @@ body {
   color: var(--gold);
 }
 
+/* --- 5v5 final-game card --- */
+.c5-final {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 12, 22, 0.7);
+  backdrop-filter: blur(2px);
+}
+.c5-final-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 30px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 3px solid var(--line);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  animation: msgPop 0.4s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+.c5-final-card .btn {
+  min-width: 180px;
+}
+
 /* --- 5v5 on-screen action buttons (overhaul) --- */
 .c5-buttons {
   position: absolute;
