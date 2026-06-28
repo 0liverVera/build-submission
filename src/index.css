@@ -545,67 +545,65 @@ body {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: calc(env(safe-area-inset-top) + 8px) 14px 8px;
+  gap: 8px;
+  padding: calc(env(safe-area-inset-top) + 3px) 12px 3px;
   background: linear-gradient(180deg, #1f2540 0%, #161a2e 100%);
   border-bottom: 2px solid #0a0c16;
 }
 .sb-team {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
-  border-radius: 12px;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: 9px;
   background: var(--p, var(--orange));
-  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
 }
 .sb-team.opp {
   margin-left: auto;
 }
 .sb-abbr {
   font-family: var(--font-pixel);
-  font-size: 12px;
+  font-size: 10px;
   color: #fff;
   text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
 }
 .sb-score {
   font-family: var(--font-pixel);
-  font-size: 20px;
+  font-size: 15px;
   color: #fff;
-  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
 }
 .sb-center {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1.2;
+  align-items: baseline;
+  gap: 7px;
 }
 .sb-q {
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: 1px;
   color: var(--muted);
 }
 .sb-clock {
   font-family: var(--font-pixel);
-  font-size: 16px;
+  font-size: 13px;
   color: var(--cream);
 }
 .sb-clock.clutch {
   color: #fff;
   background: var(--danger);
-  padding: 1px 6px;
-  border-radius: 6px;
+  padding: 0 5px;
+  border-radius: 5px;
   animation: clockPulse 0.5s ease-in-out infinite;
 }
 .sb-shot {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--gold);
 }
 .sb-shot.low {
   color: #fff;
   background: var(--danger);
-  padding: 1px 5px;
-  border-radius: 5px;
+  padding: 0 4px;
+  border-radius: 4px;
   animation: clockPulse 0.5s ease-in-out infinite;
 }
 
