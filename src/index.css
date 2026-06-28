@@ -449,6 +449,364 @@ body {
   box-shadow: 0 2px 0 #1f7a3a, 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
+/* --- Mock store (Phase 9) --- */
+.store-fab {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px 6px 8px;
+  border: none;
+  border-radius: 999px;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-cream);
+  text-shadow: 0 2px 0 var(--text-outline);
+  background: linear-gradient(180deg, #8b5cf6 0%, #6d28d9 100%);
+  box-shadow: 0 4px 0 #4c1d95, 0 6px 10px rgba(0, 0, 0, 0.3),
+    inset 0 2px 3px rgba(255, 255, 255, 0.25);
+}
+.sf-icon {
+  font-size: 18px;
+}
+
+.store-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(26, 16, 10, 0.74);
+  backdrop-filter: blur(3px);
+}
+.store-panel {
+  width: 100%;
+  max-width: 480px;
+  height: 86%;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #7d5230 0%, var(--arena-brown) 14%, #5a3620 100%);
+  border-top: 4px solid var(--gold-deep);
+  border-radius: 26px 26px 0 0;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
+  animation: storeIn 0.32s cubic-bezier(0.2, 1.2, 0.4, 1) forwards;
+}
+@keyframes storeIn {
+  0% {
+    transform: translateY(100%);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+.store-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 12px;
+  border-bottom: 2px solid var(--arena-brown-dark);
+}
+.store-title {
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: 2px;
+  color: var(--gold);
+  text-shadow: 0 2px 0 var(--text-outline);
+}
+.store-gems {
+  margin-left: auto;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--text-cream);
+  background: rgba(0, 0, 0, 0.25);
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+.store-close {
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-cream);
+  background: linear-gradient(180deg, #e8503a, #a8311f);
+  box-shadow: 0 3px 0 #7a2415;
+}
+.store-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  touch-action: pan-y;
+  padding: 12px 14px calc(env(safe-area-inset-bottom) + 20px);
+}
+.store-section-label {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--sand-light);
+  opacity: 0.85;
+  margin: 14px 2px 8px;
+}
+.store-section-label:first-child {
+  margin-top: 2px;
+}
+
+/* generic buy buttons inside the store */
+.buy-btn {
+  border: none;
+  border-radius: 14px;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+  padding: 8px 14px;
+  background: linear-gradient(180deg, #56c06a 0%, #2f9e4f 100%);
+  box-shadow: 0 4px 0 #1f7a3a;
+}
+.buy-btn:disabled {
+  filter: grayscale(0.55) brightness(0.85);
+}
+.buy-btn.gold {
+  background: linear-gradient(180deg, #ffd54a 0%, var(--gold-deep) 100%);
+  box-shadow: 0 4px 0 #9c6b14;
+  color: #5a3a08;
+  text-shadow: none;
+}
+.buy-btn.green {
+  background: linear-gradient(180deg, #56c06a 0%, #2f9e4f 100%);
+}
+.buy-btn.gem {
+  background: linear-gradient(180deg, #8b5cf6 0%, #6d28d9 100%);
+  box-shadow: 0 4px 0 #4c1d95;
+}
+.buy-btn.small {
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+/* Champion pack */
+.champ-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 14px 14px 12px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #fff3da 0%, #ffd54a 60%, #e0a020 100%);
+  border: 3px solid #9c6b14;
+  box-shadow: 0 5px 0 #9c6b14, 0 8px 14px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.champ-card.owned {
+  filter: grayscale(0.3) brightness(0.96);
+}
+.champ-tag {
+  position: absolute;
+  top: 8px;
+  right: -28px;
+  transform: rotate(38deg);
+  background: var(--team-red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 3px 32px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+.champ-icon {
+  font-size: 46px;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.3));
+}
+.champ-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.champ-name {
+  font-weight: 700;
+  font-size: 18px;
+  color: #5a3a08;
+}
+.champ-desc {
+  font-weight: 500;
+  font-size: 12px;
+  color: #7a5210;
+  line-height: 1.2;
+}
+
+/* Gem packs */
+.gem-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.gem-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 6px 10px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fffaf0 0%, #f3e2c2 100%);
+  border: 3px solid var(--arena-brown-dark);
+  box-shadow: 0 4px 0 var(--arena-brown-dark);
+}
+.gem-tag {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  background: var(--team-red);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.3);
+}
+.gem-icon {
+  font-size: 28px;
+}
+.gem-amount {
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--arena-brown-dark);
+}
+.gem-bonus {
+  font-weight: 700;
+  font-size: 11px;
+  color: #2f9e4f;
+  margin-top: -4px;
+}
+
+/* Skins */
+.skin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.skin-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 16px;
+  background: rgba(255, 246, 230, 0.1);
+  border: 2px solid rgba(255, 246, 230, 0.2);
+}
+.skin-card.equipped {
+  border-color: var(--gold);
+  background: rgba(255, 213, 74, 0.16);
+}
+.skin-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 -3px 5px rgba(0, 0, 0, 0.3);
+  flex: 0 0 auto;
+}
+.skin-name {
+  flex: 1 1 auto;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-cream);
+  line-height: 1.1;
+}
+.skin-state.equipped {
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--gold);
+}
+
+/* Free row */
+.free-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255, 246, 230, 0.1);
+  margin-bottom: 8px;
+}
+.free-info {
+  flex: 1 1 auto;
+}
+.free-name {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text-cream);
+}
+.free-desc {
+  font-weight: 500;
+  font-size: 11px;
+  color: var(--sand-light);
+  opacity: 0.85;
+}
+.store-disclaimer {
+  text-align: center;
+  font-size: 11px;
+  color: var(--sand-light);
+  opacity: 0.6;
+  margin-top: 16px;
+}
+
+.candy-btn.revive {
+  background: linear-gradient(180deg, #b86bff 0%, #7c3aed 100%);
+  box-shadow: 0 6px 0 #5b21b6, 0 9px 14px rgba(0, 0, 0, 0.3);
+  font-size: 19px;
+}
+.candy-btn.revive:active {
+  box-shadow: 0 2px 0 #5b21b6, 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+.candy-btn.revive:disabled {
+  filter: grayscale(0.6) brightness(0.8);
+}
+
+/* Toast */
+.toast-wrap {
+  position: absolute;
+  top: 88px;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.toast {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--text-cream);
+  background: rgba(26, 16, 10, 0.92);
+  border: 2px solid var(--gold);
+  padding: 8px 18px;
+  border-radius: 999px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
+  animation: toastIn 0.3s cubic-bezier(0.2, 1.5, 0.4, 1) forwards;
+}
+@keyframes toastIn {
+  0% {
+    transform: translateY(-16px) scale(0.8);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
 /* --- Coin-fly + confetti effect layers (Phase 7) --- */
 .coinfly-layer,
 .confetti-layer {

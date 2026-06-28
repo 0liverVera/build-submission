@@ -2,6 +2,8 @@ import { useRef, type ReactNode } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { UnitType, Level } from '../game/types'
+import { useGameStore } from '../game/store'
+import { skinById } from '../game/store-items'
 
 const SKIN = '#e8b88f'
 const GOLD = '#ffd54a'
@@ -192,17 +194,25 @@ export default function UnitMesh({
     g.current.scale.set(1, breathe, 1)
   })
 
-  const teamColor = team === 'player' ? '#3a7be8' : '#e8503a'
+  const skinId = useGameStore((s) => s.skin)
+  const skin = skinById(skinId)
+  const teamColor = team === 'player' ? skin.base : '#e8503a'
+  const baseEmissive = team === 'player' ? skin.emissive : '#000000'
   const bodyScale = LEVEL_SCALE[level - 1]
   const baseScale = 1 + (level - 1) * 0.12
 
   return (
     <group ref={g} scale={pop ? 0.001 : 1}>
-      {/* Team-colored base disc */}
+      {/* Team-colored base disc (player tint = equipped skin) */}
       <group scale={[baseScale, 1, baseScale]}>
         <mesh position={[0, 0.06, 0]} receiveShadow>
           <cylinderGeometry args={[0.6, 0.66, 0.12, 28]} />
-          <meshStandardMaterial color={teamColor} roughness={0.7} />
+          <meshStandardMaterial
+            color={teamColor}
+            emissive={baseEmissive}
+            emissiveIntensity={team === 'player' ? 0.45 : 0}
+            roughness={0.7}
+          />
         </mesh>
         <mesh position={[0, 0.13, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <torusGeometry args={[0.6, 0.04, 8, 28]} />

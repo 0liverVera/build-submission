@@ -5,12 +5,14 @@ import Arena from './three/Arena'
 import Board from './three/Board'
 import CombatSim from './three/CombatSim'
 import Shop from './ui/Shop'
+import Store from './ui/Store'
 import TapButton from './ui/TapButton'
 import CoinFly from './ui/CoinFly'
 import Confetti from './ui/Confetti'
 import { useGameStore } from './game/store'
 import { isBossWave } from './game/enemies'
 import { MODIFIERS } from './game/modifiers'
+import { REVIVE_COST } from './game/store-items'
 
 /** Smoothly counts a displayed number toward a target value. */
 function useCountUp(value: number, dur = 0.5) {
@@ -112,7 +114,9 @@ function BannerOverlay() {
 function GameOverOverlay() {
   const wave = useGameStore((s) => s.wave)
   const bestWave = useGameStore((s) => s.bestWave)
+  const gems = useGameStore((s) => s.gems)
   const restart = useGameStore((s) => s.restart)
+  const revive = useGameStore((s) => s.revive)
   const isNewBest = wave >= bestWave && wave > 1
   return (
     <div className="gameover-overlay">
@@ -127,6 +131,14 @@ function GameOverOverlay() {
           <span>{isNewBest ? '🏆 New Best!' : 'Best'}</span>
           <b>Wave {bestWave}</b>
         </div>
+        <TapButton
+          className="candy-btn revive"
+          type="button"
+          onClick={revive}
+          disabled={gems < REVIVE_COST}
+        >
+          ✨ CONTINUE · 💎{REVIVE_COST}
+        </TapButton>
         <TapButton className="candy-btn" type="button" onClick={restart}>
           ↺ PLAY AGAIN
         </TapButton>
@@ -137,6 +149,33 @@ function GameOverOverlay() {
 
 function BattleStrip() {
   return <div className="battle-strip">⚔ BATTLE IN PROGRESS</div>
+}
+
+function StoreButton() {
+  const openStore = useGameStore((s) => s.openStore)
+  const gems = useGameStore((s) => s.gems)
+  return (
+    <TapButton className="store-fab" type="button" onClick={openStore}>
+      <span className="sf-icon">💎</span>
+      <span className="sf-count">{gems}</span>
+    </TapButton>
+  )
+}
+
+function Toast() {
+  const toast = useGameStore((s) => s.toast)
+  const clear = useGameStore((s) => s.clearToast)
+  useEffect(() => {
+    if (!toast) return
+    const t = window.setTimeout(clear, 1600)
+    return () => window.clearTimeout(t)
+  }, [toast, clear])
+  if (!toast) return null
+  return (
+    <div className="toast-wrap">
+      <div className="toast">{toast}</div>
+    </div>
+  )
 }
 
 function ModifierChip() {
@@ -181,6 +220,7 @@ function ModifierAnnounce() {
 
 export default function App() {
   const phase = useGameStore((s) => s.phase)
+  const storeOpen = useGameStore((s) => s.storeOpen)
   return (
     <div className="game-stage">
       <TopHud />
@@ -200,6 +240,7 @@ export default function App() {
 
         <div className="arena-vignette" />
         {phase === 'prep' && <ModifierChip />}
+        {phase === 'prep' && <StoreButton />}
         {phase === 'prep' && <FightDock />}
         <BannerOverlay />
         <ModifierAnnounce />
@@ -211,6 +252,8 @@ export default function App() {
 
       <CoinFly />
       <Confetti />
+      {storeOpen && <Store />}
+      <Toast />
     </div>
   )
 }

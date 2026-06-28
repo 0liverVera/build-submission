@@ -3,6 +3,14 @@ import type { UnitInstance, UnitType, Level, SlotRef } from './types'
 import { slotPos, BOARD_Y } from './layout'
 import { UNIT_TYPES, UNIT_DEFS } from './units'
 import { type ModifierId, rollModifierId } from './modifiers'
+import {
+  GEM_PACKS,
+  SKINS,
+  skinById,
+  CHAMPION_PACK,
+  REVIVE_COST,
+  AD_COINS,
+} from './store-items'
 import { sfx } from './sfx'
 
 let _id = 0
@@ -42,6 +50,39 @@ function saveBest(v: number) {
     localStorage.setItem(BEST_KEY, String(v))
   } catch {
     /* ignore (private mode / SSR) */
+  }
+}
+
+// --- Player profile persistence (gems / skins / no-ads; survives runs) ---
+const PROFILE_KEY = 'cc_profile'
+interface Profile {
+  gems: number
+  skin: string
+  ownedSkins: string[]
+  noAds: boolean
+  championOwned: boolean
+}
+const DEFAULT_PROFILE: Profile = {
+  gems: 0,
+  skin: 'classic',
+  ownedSkins: ['classic'],
+  noAds: false,
+  championOwned: false,
+}
+function loadProfile(): Profile {
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY)
+    if (!raw) return { ...DEFAULT_PROFILE }
+    return { ...DEFAULT_PROFILE, ...JSON.parse(raw) }
+  } catch {
+    return { ...DEFAULT_PROFILE }
+  }
+}
+function saveProfile(p: Profile) {
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(p))
+  } catch {
+    /* ignore */
   }
 }
 
@@ -95,6 +136,16 @@ interface GameState {
   zoomAt: number
   rerollCost: number
 
+  // --- Profile / monetization (Phase 9, all mock) ---
+  gems: number
+  skin: string
+  ownedSkins: string[]
+  noAds: boolean
+  championOwned: boolean
+  storeOpen: boolean
+  adWatching: boolean
+  toast: string | null
+
   moveUnit: (from: SlotRef, to: SlotRef) => void
   buyFromShop: (index: number) => void
   reroll: () => void
@@ -105,17 +156,40 @@ interface GameState {
   restart: () => void
   removeBurst: (id: string) => void
   triggerShake: (power: number) => void
+
+  openStore: () => void
+  closeStore: () => void
+  buyGems: (packId: string) => void
+  buySkin: (id: string) => void
+  equipSkin: (id: string) => void
+  buyChampionPack: () => void
+  removeAds: () => void
+  watchAd: () => void
+  revive: () => void
+  showToast: (msg: string) => void
+  clearToast: () => void
 }
 
 const sameSlot = (a: SlotRef, b: SlotRef) =>
   a.area === b.area && a.index === b.index
 const firstEmpty = (arr: (UnitInstance | null)[]) => arr.findIndex((x) => !x)
 
+const _profile = loadProfile()
+
 export const useGameStore = create<GameState>((set, get) => ({
   ...initialRun(),
   bestWave: loadBest(),
   zoomAt: 0,
   rerollCost: REROLL_COST,
+
+  gems: _profile.gems,
+  skin: _profile.skin,
+  ownedSkins: _profile.ownedSkins,
+  noAds: _profile.noAds,
+  championOwned: _profile.championOwned,
+  storeOpen: false,
+  adWatching: false,
+  toast: null,
 
   moveUnit: (from, to) => {
     if (sameSlot(from, to)) return
@@ -268,4 +342,107 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   triggerShake: (power) =>
     set({ kickAt: performance.now(), kickPower: power }),
+
+  // --- Mock store actions (no real payment is ever processed) ---
+  openStore: () => set({ storeOpen: true }),
+  closeStore: () => set({ storeOpen: false }),
+
+  showToast: (msg) => set({ toast: msg }),
+  clearToast: () => set({ toast: null }),
+
+  buyGems: (packId) => {
+    const pack = GEM_PACKS.find((p) => p.id === packId)
+    if (!pack) return
+    const s = get()
+    const gems = s.gems + pack.gems
+    set({ gems })
+    persist(get())
+    sfx.coin()
+    get().showToast(`+${pack.gems} 💎`)
+  },
+
+  buySkin: (id) => {
+    const s = get()
+    const skin = SKINS.find((k) => k.id === id)
+    if (!skin || s.ownedSkins.includes(id)) return
+    if (s.gems < skin.gemCost) {
+      sfx.deny()
+      get().showToast('Not enough gems')
+      return
+    }
+    const ownedSkins = [...s.ownedSkins, id]
+    set({ gems: s.gems - skin.gemCost, ownedSkins, skin: id })
+    persist(get())
+    sfx.buy()
+    get().showToast(`Unlocked ${skin.name}!`)
+  },
+
+  equipSkin: (id) => {
+    const s = get()
+    if (!s.ownedSkins.includes(id)) return
+    set({ skin: id })
+    persist(get())
+    sfx.tap()
+    get().showToast(`Equipped ${skinById(id).name}`)
+  },
+
+  buyChampionPack: () => {
+    const s = get()
+    const ownedSkins = s.ownedSkins.includes(CHAMPION_PACK.skin)
+      ? s.ownedSkins
+      : [...s.ownedSkins, CHAMPION_PACK.skin]
+    set({
+      gems: s.gems + CHAMPION_PACK.gems,
+      noAds: true,
+      championOwned: true,
+      ownedSkins,
+    })
+    persist(get())
+    sfx.win()
+    get().showToast('Champion Pack unlocked! 👑')
+  },
+
+  removeAds: () => {
+    set({ noAds: true })
+    persist(get())
+    sfx.buy()
+    get().showToast('Ads removed — thank you!')
+  },
+
+  watchAd: () => {
+    const s = get()
+    if (s.adWatching) return
+    set({ adWatching: true })
+    window.setTimeout(() => {
+      const cur = get()
+      set({ adWatching: false, coins: cur.coins + AD_COINS })
+      sfx.coin()
+      cur.showToast(`+${AD_COINS} 🪙`)
+    }, 2000)
+  },
+
+  revive: () => {
+    const s = get()
+    if (s.phase !== 'gameover') return
+    if (s.gems < REVIVE_COST) {
+      sfx.deny()
+      get().showToast('Not enough gems')
+      return
+    }
+    set({ gems: s.gems - REVIVE_COST, phase: 'prep', lives: 1, banner: null })
+    persist(get())
+    sfx.fight()
+    get().showToast('Revived! ⚔')
+  },
 }))
+
+/** Persist just the profile slice after any monetization change. */
+function persist(s: GameState) {
+  saveProfile({
+    gems: s.gems,
+    skin: s.skin,
+    ownedSkins: s.ownedSkins,
+    noAds: s.noAds,
+    championOwned: s.championOwned,
+  })
+}
