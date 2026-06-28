@@ -1,5 +1,5 @@
 {
-  "name": "colosseum-clash",
+  "name": "hoop-dynasty",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -10,21 +10,17 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
-    "@fontsource/fredoka": "^5.1.0",
-    "@react-three/drei": "^9.114.3",
-    "@react-three/fiber": "^8.17.10",
+    "@fontsource/press-start-2p": "^5.1.0",
     "framer-motion": "^11.11.9",
     "howler": "^2.2.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "three": "^0.169.0",
     "zustand": "^5.0.1"
   },
   "devDependencies": {
     "@types/howler": "^2.2.12",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
-    "@types/three": "^0.169.0",
     "@vitejs/plugin-react": "^4.3.3",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
