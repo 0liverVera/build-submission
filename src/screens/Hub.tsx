@@ -48,7 +48,7 @@ export default function Hub() {
       </header>
 
       <div className="hub-nav">
-        <button className="nav-card play" onClick={() => go('game')}>
+        <button className="nav-card play" onClick={() => go('season')}>
           <span className="ic">🏀</span>
           <span className="lbl">PLAY GAME</span>
         </button>

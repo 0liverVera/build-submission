@@ -6,6 +6,7 @@ import Placeholder from './screens/Placeholder'
 import Roster from './screens/Roster'
 import FrontOffice from './screens/FrontOffice'
 import Press from './screens/Press'
+import Season from './screens/Season'
 import GameScreen from './court/GameScreen'
 import RotateGate from './ui/RotateGate'
 
@@ -19,6 +20,7 @@ export default function App() {
       {screen === 'newFranchise' && <NewFranchise />}
       {screen === 'hub' && <Hub />}
       {screen === 'game' && <GameScreen />}
+      {screen === 'season' && <Season />}
       {screen === 'roster' && <Roster />}
       {screen === 'frontoffice' && <FrontOffice />}
       {screen === 'press' && <Press />}

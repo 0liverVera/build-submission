@@ -17,6 +17,45 @@ export interface Player {
 export type FacilityKey = 'training' | 'medical' | 'scouting' | 'stadium'
 export type Facilities = Record<FacilityKey, number>
 
+export interface LeagueTeam {
+  id: string
+  city: string
+  name: string
+  abbr: string
+  color: string
+  rating: number // ~4–8 team strength
+  w: number
+  l: number
+}
+
+export type GoalType = 'playoffs' | 'wins'
+export interface OwnerGoal {
+  type: GoalType
+  target: number
+  label: string
+}
+
+export type SeasonPhase = 'regular' | 'playoffs' | 'offseason'
+export interface SeasonState {
+  phase: SeasonPhase
+  game: number // regular-season game index
+  schedule: string[] // opponent league-team ids
+  wins: number
+  losses: number
+  goal: OwnerGoal
+  playoffRound: number // 0 none, 1 semifinal, 2 final
+  alive: boolean // still alive in the playoffs / champion flag at offseason
+  lastResult: string // headline for the Season screen
+}
+
+export interface HofPlayer {
+  name: string
+  pos: Position
+  overall: number
+  seasons: number
+  titles: number
+}
+
 export interface Franchise {
   coachName: string
   city: string
@@ -34,6 +73,14 @@ export interface Franchise {
   facilities: Facilities
   /** 0–100; raises credit income and reflects the fanbase. */
   fanInterest: number
+  // --- Season / dynasty (Phase 6) ---
+  league: LeagueTeam[]
+  seasonState: SeasonState
+  hallOfFame: HofPlayer[]
+  failedGoals: number
+  titles: number
+  /** Per-player seasons played, keyed by player id (for HoF legacy). */
+  tenure: Record<string, number>
 }
 
 export type Screen =
@@ -41,6 +88,7 @@ export type Screen =
   | 'newFranchise'
   | 'hub'
   | 'game'
+  | 'season'
   | 'roster'
   | 'frontoffice'
   | 'press'

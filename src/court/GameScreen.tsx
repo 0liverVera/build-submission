@@ -50,8 +50,10 @@ export default function GameScreen() {
   const franchise = useGame((s) => s.franchise)
   const recordGameResult = useGame((s) => s.recordGameResult)
   const triggerPressEvent = useGame((s) => s.triggerPressEvent)
+  const advanceSeason = useGame((s) => s.advanceSeason)
 
-  const oppRef = useRef<Opp>(makeOpp())
+  // Opponent = this season's scheduled / playoff foe (fallback to random).
+  const oppRef = useRef<Opp>(useGame.getState().currentOpponent() ?? makeOpp())
   const opp = oppRef.current
 
   const [us, setUs] = useState(0)
@@ -193,8 +195,10 @@ export default function GameScreen() {
             fanInterest={franchise?.fanInterest ?? 50}
             onDone={(win, credits) => {
               recordGameResult(win, credits)
-              const hasEvent = triggerPressEvent()
-              navigate(hasEvent ? 'press' : 'hub')
+              advanceSeason(win)
+              const phase = useGame.getState().franchise?.seasonState.phase
+              if (phase === 'regular' && triggerPressEvent()) navigate('press')
+              else navigate('season')
             }}
           />
         )}

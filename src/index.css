@@ -754,6 +754,161 @@ body {
   color: var(--muted);
 }
 
+/* --- Season dashboard (Phase 6) --- */
+.season-goal {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gold);
+}
+.season-banner {
+  text-align: center;
+  font-family: var(--font-pixel);
+  font-size: 12px;
+  color: var(--teal);
+  padding: 6px;
+  margin-bottom: 8px;
+  background: rgba(45, 212, 191, 0.1);
+  border-radius: 10px;
+}
+.season-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 16px;
+}
+.standings {
+  flex: 1.1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+.std-title {
+  font-size: 10px;
+  letter-spacing: 2px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.std-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.std-row.playoff {
+  background: rgba(255, 207, 74, 0.08);
+}
+.std-row.me {
+  background: rgba(255, 138, 61, 0.18);
+  border: 1px solid var(--orange);
+}
+.std-rank {
+  width: 16px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: center;
+}
+.std-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+}
+.std-name {
+  flex: 1 1 auto;
+  font-weight: 600;
+  color: var(--cream);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.std-rec {
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: var(--cream);
+}
+.std-foot {
+  margin-top: auto;
+  font-size: 10px;
+  color: var(--muted);
+  padding-top: 6px;
+}
+.season-side {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+.season-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 2px solid var(--line);
+}
+.sc-next {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.sc-next.playoff {
+  font-family: var(--font-pixel);
+  font-size: 12px;
+  color: var(--gold);
+}
+.sc-next b,
+.sc-result b {
+  color: var(--cream);
+}
+.sc-result {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--cream);
+  line-height: 1.4;
+}
+.season-cta .btn {
+  width: 100%;
+  font-size: 12px;
+}
+.hof {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 2px solid var(--line);
+}
+.hof-title {
+  font-size: 10px;
+  letter-spacing: 1px;
+  font-weight: 700;
+  color: var(--gold);
+}
+.hof-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+.hof-name {
+  font-weight: 600;
+  color: var(--cream);
+}
+.hof-meta {
+  color: var(--muted);
+}
+
 /* --- Roster (Phase 4) --- */
 .roster-screen .screen-head {
   margin-bottom: 10px;

@@ -45,7 +45,7 @@ export default function Press() {
               variant="primary"
               onClick={() => {
                 sfx.tap()
-                navigate('hub')
+                navigate('season')
               }}
             >
               CONTINUE ▶
