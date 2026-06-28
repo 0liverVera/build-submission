@@ -162,6 +162,40 @@ function StoreButton() {
   )
 }
 
+function IntroOverlay() {
+  const dismissIntro = useGameStore((s) => s.dismissIntro)
+  return (
+    <div className="intro-overlay">
+      <div className="intro-card">
+        <div className="intro-title">⚔ COLOSSEUM CLASH</div>
+        <div className="intro-steps">
+          <div className="intro-step">
+            <span className="is-emoji">🔀</span>
+            <span>
+              <b>Drag</b> two matching gladiators together to <b>merge</b> them stronger.
+            </span>
+          </div>
+          <div className="intro-step">
+            <span className="is-emoji">🛒</span>
+            <span>
+              <b>Buy</b> units from the shop and build your <b>3×3</b> team.
+            </span>
+          </div>
+          <div className="intro-step">
+            <span className="is-emoji">⚔️</span>
+            <span>
+              Tap <b>FIGHT</b> — watch them auto-battle the waves. Survive!
+            </span>
+          </div>
+        </div>
+        <TapButton className="candy-btn" type="button" onClick={dismissIntro}>
+          GOT IT!
+        </TapButton>
+      </div>
+    </div>
+  )
+}
+
 function Toast() {
   const toast = useGameStore((s) => s.toast)
   const clear = useGameStore((s) => s.clearToast)
@@ -221,6 +255,7 @@ function ModifierAnnounce() {
 export default function App() {
   const phase = useGameStore((s) => s.phase)
   const storeOpen = useGameStore((s) => s.storeOpen)
+  const showIntro = useGameStore((s) => s.showIntro)
   return (
     <div className="game-stage">
       <TopHud />
@@ -253,6 +288,7 @@ export default function App() {
       <CoinFly />
       <Confetti />
       {storeOpen && <Store />}
+      {showIntro && <IntroOverlay />}
       <Toast />
     </div>
   )

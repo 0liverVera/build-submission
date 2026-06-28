@@ -66,10 +66,10 @@ let _cid = 0
 
 function baseStats(src: { type: UnitType; level: Level; boss?: boolean }, wave: number) {
   if (src.boss) {
-    const hp = Math.round(1700 * (1 + Math.max(0, wave - 5) * 0.12))
+    const hp = Math.round(1450 * (1 + Math.max(0, wave - 5) * 0.1))
     return {
       maxHp: hp,
-      dmg: Math.round(40 + wave * 2),
+      dmg: Math.round(34 + wave * 2),
       range: 1.7,
       atkInterval: 1.3,
       speed: 1.2,
@@ -432,7 +432,7 @@ export default function CombatSim() {
           let hitAny = false
           for (const o of combatants) {
             if (o.alive && hostile(c, o) && c.pos.distanceTo(o.pos) <= SLAM_RADIUS) {
-              const sd = Math.round(c.dmg * 1.6)
+              const sd = Math.round(c.dmg * 1.4)
               o.hp -= sd
               o.hitT = 0.22
               tmp.subVectors(o.pos, c.pos).setY(0)

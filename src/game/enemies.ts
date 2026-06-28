@@ -20,9 +20,9 @@ const randType = () => UNIT_TYPES[Math.floor(Math.random() * UNIT_TYPES.length)]
 export function generateEnemyTeam(wave: number): EnemySeed[] {
   if (isBossWave(wave)) return generateBossWave(wave)
 
-  const count = Math.min(2 + Math.ceil(wave * 0.7), 9)
-  const lvl2Chance = Math.min(0.1 + wave * 0.06, 0.7)
-  const lvl3Chance = wave >= 8 ? Math.min((wave - 8) * 0.04, 0.3) : 0
+  const count = Math.min(2 + Math.ceil(wave * 0.6), 8)
+  const lvl2Chance = Math.min(0.05 + wave * 0.05, 0.65)
+  const lvl3Chance = wave >= 9 ? Math.min((wave - 9) * 0.04, 0.3) : 0
 
   const out: EnemySeed[] = []
   for (let i = 0; i < count; i++) {

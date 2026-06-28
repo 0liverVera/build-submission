@@ -22,7 +22,7 @@ const mk = (type: UnitType, level: Level = 1): UnitInstance => ({
 })
 
 // --- Economy constants (classic autobattler; tuned in Phase 10) ---
-const START_COINS = 10
+const START_COINS = 12
 const REROLL_COST = 2
 const INCOME_BASE = 5
 const WIN_BONUS = 1
@@ -86,6 +86,16 @@ function saveProfile(p: Profile) {
   }
 }
 
+// --- One-time "how to play" intro flag ---
+const INTRO_KEY = 'cc_seenIntro'
+function loadIntroSeen(): boolean {
+  try {
+    return localStorage.getItem(INTRO_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 /** Fresh-run state (everything that resets on restart; best wave persists). */
 function initialRun() {
   const board = Array<UnitInstance | null>(9).fill(null)
@@ -145,6 +155,7 @@ interface GameState {
   storeOpen: boolean
   adWatching: boolean
   toast: string | null
+  showIntro: boolean
 
   moveUnit: (from: SlotRef, to: SlotRef) => void
   buyFromShop: (index: number) => void
@@ -168,6 +179,7 @@ interface GameState {
   revive: () => void
   showToast: (msg: string) => void
   clearToast: () => void
+  dismissIntro: () => void
 }
 
 const sameSlot = (a: SlotRef, b: SlotRef) =>
@@ -190,6 +202,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   storeOpen: false,
   adWatching: false,
   toast: null,
+  showIntro: !loadIntroSeen(),
 
   moveUnit: (from, to) => {
     if (sameSlot(from, to)) return
@@ -349,6 +362,15 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   showToast: (msg) => set({ toast: msg }),
   clearToast: () => set({ toast: null }),
+
+  dismissIntro: () => {
+    try {
+      localStorage.setItem(INTRO_KEY, '1')
+    } catch {
+      /* ignore */
+    }
+    set({ showIntro: false })
+  },
 
   buyGems: (packId) => {
     const pack = GEM_PACKS.find((p) => p.id === packId)
