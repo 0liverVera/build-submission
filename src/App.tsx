@@ -1,27 +1,44 @@
 import { Canvas } from '@react-three/fiber'
 import Arena from './three/Arena'
+import Board from './three/Board'
+import { useGameStore } from './game/store'
 
 /**
- * Phase 1 shell: top HUD, the 3D colosseum in the middle, and a placeholder
- * shop bar at the bottom. Real game state (Zustand), units, and shop come in
- * later phases — this establishes the mobile portrait layout and the arena.
+ * Phase 2 shell: top HUD, the 3D colosseum + interactive board (grid, bench,
+ * drag & merge), and a placeholder shop bar. A temporary "add unit" control is
+ * present for testing merges until the real shop arrives in Phase 3.
  */
 
 function TopHud() {
+  const lives = useGameStore((s) => s.lives)
+  const coins = useGameStore((s) => s.coins)
+  const wave = useGameStore((s) => s.wave)
   return (
     <div className="hud-top">
       <div className="hud-pill lives">
         <span className="icon">❤️</span>
-        <span>3</span>
+        <span>{lives}</span>
       </div>
       <div className="wave-badge">
         <span className="label">WAVE</span>
-        <span className="num">1</span>
+        <span className="num">{wave}</span>
       </div>
       <div className="hud-pill coins">
         <span className="icon">🪙</span>
-        <span>10</span>
+        <span>{coins}</span>
       </div>
+    </div>
+  )
+}
+
+function DevBar() {
+  const addRandomUnit = useGameStore((s) => s.addRandomUnit)
+  return (
+    <div className="dev-bar">
+      <span className="dev-hint">drag two matching units together to merge</span>
+      <button className="dev-btn" type="button" onClick={addRandomUnit}>
+        + ADD UNIT (temp)
+      </button>
     </div>
   )
 }
@@ -54,13 +71,10 @@ export default function App() {
         >
           <color attach="background" args={['#caa06a']} />
           <Arena />
+          <Board />
         </Canvas>
 
-        <div className="fight-dock">
-          <button className="candy-btn" type="button">
-            FIGHT
-          </button>
-        </div>
+        <DevBar />
       </div>
 
       <ShopBarPlaceholder />

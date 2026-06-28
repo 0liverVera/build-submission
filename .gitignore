@@ -38,3 +38,6 @@ pnpm-debug.log*
 .env.local
 .env.*.local
 .vercel
+
+# TS build cache
+*.tsbuildinfo

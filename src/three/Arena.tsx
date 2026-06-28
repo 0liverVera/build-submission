@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import { useGameStore } from '../game/store'
 
 /**
  * The colosseum environment: an oval sand floor, a dividing line between the
@@ -74,13 +75,22 @@ function ArenaFloor() {
 }
 
 function CameraRig() {
-  // Subtle idle drift so the scene feels alive even at rest (Section 4: camera).
+  // Subtle idle drift so the scene feels alive even at rest (Section 4: camera),
+  // plus a decaying screen shake driven by the store (e.g. on merge).
   const t = useRef(0)
   useFrame((state, delta) => {
     t.current += delta
     const cam = state.camera
-    cam.position.x = Math.sin(t.current * 0.18) * 0.5
-    cam.position.y = 13 + Math.sin(t.current * 0.25) * 0.18
+    const driftX = Math.sin(t.current * 0.18) * 0.5
+    const driftY = Math.sin(t.current * 0.25) * 0.18
+
+    const { kickAt, kickPower } = useGameStore.getState()
+    const since = (performance.now() - kickAt) / 1000
+    const shake = since >= 0 && since < 0.4 ? kickPower * (1 - since / 0.4) : 0
+
+    cam.position.x = driftX + (Math.random() * 2 - 1) * shake
+    cam.position.y = 13 + driftY + (Math.random() * 2 - 1) * shake
+    cam.position.z = 13.5
     cam.lookAt(0, 0.4, -0.3)
   })
   return null
