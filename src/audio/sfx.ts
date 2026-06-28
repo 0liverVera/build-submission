@@ -1,21 +1,11 @@
-/**
- * Synthesized SFX via Web Audio — no audio files, fully offline.
- * Howler.js music loops get layered in during the audio/juice phases.
- */
-let ctx: AudioContext | null = null
-function ac(): AudioContext | null {
-  if (typeof window === 'undefined') return null
-  if (!ctx) {
-    const C =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext })
-        .webkitAudioContext
-    if (!C) return null
-    ctx = new C()
-  }
-  if (ctx.state === 'suspended') void ctx.resume()
-  return ctx
+/** Synthesized SFX via Web Audio — no audio files, fully offline. */
+import { getCtx } from './audioctx'
+
+let _muted = false
+export function setSfxMuted(m: boolean) {
+  _muted = m
 }
+const ac = () => (_muted ? null : getCtx())
 
 interface ToneOpts {
   freq: number

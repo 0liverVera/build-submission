@@ -10,13 +10,54 @@ import Season from './screens/Season'
 import Offseason from './screens/Offseason'
 import GameScreen from './court/GameScreen'
 import RotateGate from './ui/RotateGate'
+import { useEffect, useState } from 'react'
+import { playTrack, setMusicMuted } from './audio/music'
+import { setSfxMuted } from './audio/sfx'
+
+const MUTE_KEY = 'hoop_muted'
+function loadMuted() {
+  try {
+    return localStorage.getItem(MUTE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function MuteButton() {
+  const [muted, setMuted] = useState(loadMuted)
+  useEffect(() => {
+    setMusicMuted(muted)
+    setSfxMuted(muted)
+    try {
+      localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }, [muted])
+  return (
+    <button className="mute-btn" onClick={() => setMuted((m) => !m)} aria-label="Toggle sound">
+      {muted ? '🔇' : '🔊'}
+    </button>
+  )
+}
 
 export default function App() {
   const screen = useGame((s) => s.screen)
 
+  // Menu loop on the front screens, in-game loop everywhere else. Audio can
+  // only start after a user gesture, so kick it off on the first pointerdown.
+  useEffect(() => {
+    const track = screen === 'menu' || screen === 'newFranchise' ? 'menu' : 'game'
+    playTrack(track)
+    const onGesture = () => playTrack(track)
+    window.addEventListener('pointerdown', onGesture)
+    return () => window.removeEventListener('pointerdown', onGesture)
+  }, [screen])
+
   return (
     <div className="stage">
       <RotateGate />
+      {screen === 'menu' && <MuteButton />}
       {screen === 'menu' && <MainMenu />}
       {screen === 'newFranchise' && <NewFranchise />}
       {screen === 'hub' && <Hub />}

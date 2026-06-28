@@ -111,6 +111,7 @@ export default function CourtGame({
     if (!ctx) return
 
     const teamColor = franchise?.colorPrimary ?? '#ff8a3d'
+    const logo = (franchise?.teamName?.[0] ?? 'H').toUpperCase()
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
 
     let W = 0
@@ -498,6 +499,21 @@ export default function CourtGame({
       }
       ctx!.strokeStyle = 'rgba(255,255,255,0.5)'
       ctx!.lineWidth = 2.5
+      // center-court circle + faint team logo
+      ctx!.strokeStyle = 'rgba(255,255,255,0.16)'
+      ctx!.lineWidth = 2
+      ctx!.beginPath()
+      ctx!.arc(W * 0.4, H * 0.5, pr * 1.9, 0, Math.PI * 2)
+      ctx!.stroke()
+      ctx!.globalAlpha = 0.12
+      ctx!.fillStyle = '#ffffff'
+      ctx!.font = `bold ${pr * 2.3}px sans-serif`
+      ctx!.textAlign = 'center'
+      ctx!.textBaseline = 'middle'
+      ctx!.fillText(logo, W * 0.4, H * 0.5)
+      ctx!.globalAlpha = 1
+      ctx!.textBaseline = 'alphabetic'
+      ctx!.strokeStyle = 'rgba(255,255,255,0.5)'
       // lane (key) on the right
       const laneH = H * 0.42
       const laneW = W * 0.18

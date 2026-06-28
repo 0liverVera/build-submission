@@ -60,6 +60,39 @@ body {
   overflow: hidden;
   background: linear-gradient(180deg, var(--bg2) 0%, var(--bg) 60%, #0e1120 100%);
 }
+/* Subtle court-line texture for cohesion across screens */
+.stage::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.4;
+  background: repeating-linear-gradient(
+    180deg,
+    transparent 0 40px,
+    rgba(255, 255, 255, 0.014) 40px 41px
+  );
+}
+
+/* --- Mute toggle --- */
+.mute-btn {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 8px);
+  right: calc(env(safe-area-inset-right) + 10px);
+  z-index: 120;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.32);
+  color: var(--cream);
+  font-size: 15px;
+  cursor: pointer;
+}
+.mute-btn:active {
+  transform: scale(0.9);
+}
 
 .screen {
   position: absolute;
