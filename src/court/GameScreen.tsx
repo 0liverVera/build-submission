@@ -1,8 +1,26 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { motion } from 'framer-motion'
 import CourtGame from './CourtGame'
 import { useGame } from '../state/store'
 import { teamDefense } from '../game/players'
 import { sfx } from '../audio/sfx'
+
+/** Counts a number up to a target with overshoot-free ease. */
+function useCountUp(target: number, dur = 0.8) {
+  const [v, setV] = useState(0)
+  useEffect(() => {
+    let raf = 0
+    const t0 = performance.now()
+    const step = (t: number) => {
+      const k = Math.min((t - t0) / (dur * 1000), 1)
+      setV(Math.round(target * (1 - Math.pow(1 - k, 3))))
+      if (k < 1) raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [target, dur])
+  return v
+}
 
 /**
  * PHASE 3 — full game flow. A real game vs an invented opponent: 4 quarters,
@@ -169,6 +187,7 @@ export default function GameScreen() {
             matchMode
             ratings={ratings}
             moraleMult={moraleMult}
+            clutch={quarter >= 4 && clock <= 30 && Math.abs(us - them) <= 6}
             onResult={(pts) => endPlayerPossession(pts)}
             onShotClock={(s) => setShotClock(s)}
           />
@@ -322,6 +341,7 @@ function FinalCard({
 }) {
   const win = us > them
   const credits = 20 + (win ? 30 : 0) + Math.floor(us / 4) + Math.floor(fanInterest / 10)
+  const shownCredits = useCountUp(credits)
   useEffect(() => {
     if (win) sfx.three()
     else sfx.buzzer()
@@ -336,7 +356,22 @@ function FinalCard({
         </b>
         <span>{opp.abbr}</span>
       </div>
-      <div className="final-reward">🪙 +{credits} credits</div>
+      <div className="final-reward">
+        <span className="final-coins">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <motion.span
+              key={i}
+              className="fc-coin"
+              initial={{ x: 0, y: 6, opacity: 0 }}
+              animate={{ x: (i - 2) * 22, y: [-6, -34, -16], opacity: [0, 1, 0] }}
+              transition={{ duration: 0.8, delay: 0.1 + i * 0.07 }}
+            >
+              🪙
+            </motion.span>
+          ))}
+        </span>
+        🪙 +{shownCredits} credits
+      </div>
       <button className="btn primary" onClick={() => onDone(win, credits)}>
         CONTINUE ▶
       </button>

@@ -653,9 +653,22 @@ body {
   color: var(--danger);
 }
 .final-reward {
+  position: relative;
   font-size: 16px;
   font-weight: 700;
   color: var(--gold);
+}
+.final-coins {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.fc-coin {
+  position: absolute;
+  font-size: 20px;
 }
 
 .court-canvas-wrap {
@@ -1308,12 +1321,31 @@ body {
 .press-result {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  align-items: center;
+  gap: 12px;
+}
+.pr-reaction {
+  font-size: 46px;
+  animation: reactPop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+@keyframes reactPop {
+  0% {
+    transform: scale(0.2) translateY(8px);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
 }
 .pr-text {
   font-size: 16px;
   color: var(--teal);
   line-height: 1.4;
+  text-align: center;
 }
 .press-result .btn {
   width: 100%;

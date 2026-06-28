@@ -68,6 +68,8 @@ interface CourtGameProps {
   ratings?: OnCourtRating[]
   /** Team-morale multiplier on the make window (≈0.9–1.12). */
   moraleMult?: number
+  /** Clutch possession → slow-mo on the shot + extra reaction (Section 8). */
+  clutch?: boolean
 }
 
 const DEFAULT_RATING: OnCourtRating = { shooting: 6, speed: 6, inside: 6 }
@@ -78,6 +80,7 @@ export default function CourtGame({
   onShotClock,
   ratings,
   moraleMult = 1,
+  clutch = false,
 }: CourtGameProps) {
   const navigate = useGame((s) => s.navigate)
   const franchise = useGame((s) => s.franchise)
@@ -90,6 +93,8 @@ export default function CourtGame({
   ratingsRef.current = ratings
   const moraleMultRef = useRef(moraleMult)
   moraleMultRef.current = moraleMult
+  const clutchRef = useRef(clutch)
+  clutchRef.current = clutch
   const [hud, setHud] = useState<Hud>({
     points: 0,
     made: 0,
@@ -164,6 +169,8 @@ export default function CourtGame({
     let now = 0
     let shake = 0
     let netFlash = 0
+    let netSwish = 0
+    let crowdJump = 0
     let contested = false
     let dribbleT = 0
 
@@ -281,6 +288,7 @@ export default function CourtGame({
       if (kind === 'miss') {
         setMsg('MISS', 'miss')
         sfx.rim()
+        sfx.aww()
         shake = Math.max(shake, 2)
       } else {
         const pts = ball.three ? 3 : 2
@@ -288,13 +296,17 @@ export default function CourtGame({
         possPoints = pts
         made++
         netFlash = 0.45
+        netSwish = 0.5
+        crowdJump = 0.6
         ball.x = rimX
         ball.y = rimY
         ball.z = 0
         if (ball.three) {
-          setMsg(kind === 'swish' ? 'SWISH · 3!' : 'BANG · 3!', 'three')
+          setMsg(clutchRef.current ? 'CLUTCH 3!!' : kind === 'swish' ? 'SWISH · 3!' : 'BANG · 3!', 'three')
           sfx.three()
-          shake = Math.max(shake, 9)
+          sfx.swish()
+          shake = Math.max(shake, clutchRef.current ? 13 : 9)
+          crowdJump = 0.75
         } else {
           setMsg(
             kind === 'swish' ? 'SWISH!' : kind === 'rattleIn' ? 'IN & OUT… IN!' : 'BUCKET!',
@@ -302,7 +314,7 @@ export default function CourtGame({
           )
           sfx.make()
           if (kind === 'swish') sfx.swish()
-          shake = Math.max(shake, 4)
+          shake = Math.max(shake, clutchRef.current ? 9 : 4)
         }
       }
       phase = 'resolved'
@@ -339,6 +351,7 @@ export default function CourtGame({
       if (guarded && Math.random() < blockChance) {
         setMsg('STUFFED!', 'miss')
         sfx.block()
+        sfx.aww()
         shake = Math.max(shake, 6)
       } else if (guarded) {
         points += 2
@@ -355,6 +368,8 @@ export default function CourtGame({
         setMsg('DUNK!', 'dunk')
         sfx.dunk()
         netFlash = 0.5
+        netSwish = 0.6
+        crowdJump = 0.8
         shake = Math.max(shake, 10)
       }
       phase = 'resolved'
@@ -379,6 +394,8 @@ export default function CourtGame({
       }
       if (shake > 0) shake = Math.max(0, shake - dt * 40)
       if (netFlash > 0) netFlash = Math.max(0, netFlash - dt)
+      if (netSwish > 0) netSwish = Math.max(0, netSwish - dt)
+      if (crowdJump > 0) crowdJump = Math.max(0, crowdJump - dt)
       dribbleT += dt
 
       if (phase === 'live') {
@@ -469,12 +486,14 @@ export default function CourtGame({
       ctx!.fillStyle = '#1a1f33'
       ctx!.fillRect(0, 0, W, band)
       ctx!.fillRect(0, H - band, W, band)
+      const hop = crowdJump > 0 ? Math.sin((1 - Math.min(1, crowdJump / 0.6)) * Math.PI) * 5 : 0
       for (let i = 0; i < 60; i++) {
         ctx!.fillStyle = ['#3a4170', '#4a3a6a', '#5a4a3a', '#3a5a4a'][i % 4]
         const cx = (i * 41) % W
         const top = i % 2 === 0
+        const cy = (top ? band * 0.5 : H - band * 0.5) - hop
         ctx!.beginPath()
-        ctx!.arc(cx + 6, top ? band * 0.5 : H - band * 0.5, 3.5, 0, Math.PI * 2)
+        ctx!.arc(cx + 6, cy, 3.5, 0, Math.PI * 2)
         ctx!.fill()
       }
       ctx!.strokeStyle = 'rgba(255,255,255,0.5)'
@@ -509,13 +528,15 @@ export default function CourtGame({
       ctx!.beginPath()
       ctx!.ellipse(rimX, rimY, pr * 0.5, pr * 0.8, 0, 0, Math.PI * 2)
       ctx!.stroke()
-      // net hint
+      // net — swings + droops briefly when the ball drops through
       ctx!.strokeStyle = netFlash > 0 ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)'
       ctx!.lineWidth = 1.4
+      const sw = netSwish > 0 ? netSwish / 0.5 : 0
       for (let i = -2; i <= 2; i++) {
+        const sway = Math.sin((0.5 - netSwish) * 26 + i * 1.5) * pr * 0.18 * sw
         ctx!.beginPath()
         ctx!.moveTo(rimX, rimY + (i / 2) * pr * 0.7)
-        ctx!.lineTo(rimX - pr * 0.7, rimY + (i / 4) * pr * 0.7)
+        ctx!.lineTo(rimX - pr * 0.7 - sway, rimY + (i / 4) * pr * 0.7 + sw * pr * 0.25)
         ctx!.stroke()
       }
     }
@@ -647,8 +668,10 @@ export default function CourtGame({
     let last = performance.now()
     function frame(t: number) {
       now = t / 1000
-      const dt = Math.min(0.034, (t - last) / 1000)
+      let dt = Math.min(0.034, (t - last) / 1000)
       last = t
+      // Clutch slow-mo while the shot is in the air (Section 8 buzzer-beater).
+      if (clutchRef.current && phase === 'shooting') dt *= 0.4
       update(dt)
       render()
       pushHud()

@@ -135,4 +135,8 @@ export const sfx = {
   deny() {
     tone({ freq: 200, dur: 0.16, type: 'sawtooth', gain: 0.1, slideTo: 110 })
   },
+  /** Deflated crowd "aww" on a miss/block. */
+  aww() {
+    noise({ dur: 0.5, type: 'lowpass', freq: 900, sweepTo: 300, gain: 0.07, attack: 0.05 })
+  },
 }

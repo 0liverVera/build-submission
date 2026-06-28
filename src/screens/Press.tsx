@@ -10,11 +10,16 @@ export default function Press() {
   // Snapshot once so the card persists after the event is cleared.
   const [snapshot] = useState(event)
   const [result, setResult] = useState<string | null>(null)
+  const [reaction, setReaction] = useState('😐')
 
   if (!snapshot) return null
 
   const choose = (i: number) => {
     sfx.confirm()
+    const eff = snapshot.choices[i].effect
+    const net =
+      (eff.teamMorale ?? 0) + (eff.starMorale ?? 0) + (eff.othersMorale ?? 0) + (eff.fanInterest ?? 0)
+    setReaction(net > 2 ? '😀' : net < -2 ? '😟' : '😐')
     setResult(snapshot.choices[i].result)
     resolve(i)
   }
@@ -40,6 +45,7 @@ export default function Press() {
           </div>
         ) : (
           <div className="press-result">
+            <div className="pr-reaction">{reaction}</div>
             <div className="pr-text">{result}</div>
             <Button
               variant="primary"
