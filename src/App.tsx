@@ -1,12 +1,38 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
+import { motion, useAnimationControls } from 'framer-motion'
 import Arena from './three/Arena'
 import Board from './three/Board'
 import CombatSim from './three/CombatSim'
 import Shop from './ui/Shop'
+import TapButton from './ui/TapButton'
+import CoinFly from './ui/CoinFly'
+import Confetti from './ui/Confetti'
 import { useGameStore } from './game/store'
 import { isBossWave } from './game/enemies'
 import { MODIFIERS } from './game/modifiers'
+
+/** Smoothly counts a displayed number toward a target value. */
+function useCountUp(value: number, dur = 0.5) {
+  const [disp, setDisp] = useState(value)
+  const fromRef = useRef(value)
+  useEffect(() => {
+    const from = fromRef.current
+    if (from === value) return
+    let raf = 0
+    const t0 = performance.now()
+    const step = (t: number) => {
+      const k = Math.min((t - t0) / (dur * 1000), 1)
+      const eased = 1 - Math.pow(1 - k, 3)
+      setDisp(Math.round(from + (value - from) * eased))
+      if (k < 1) raf = requestAnimationFrame(step)
+      else fromRef.current = value
+    }
+    raf = requestAnimationFrame(step)
+    return () => cancelAnimationFrame(raf)
+  }, [value, dur])
+  return disp
+}
 
 /**
  * Phase 5 shell: prep → fight → (win advances wave / lose costs a life) → on 0
@@ -17,6 +43,17 @@ function TopHud() {
   const lives = useGameStore((s) => s.lives)
   const coins = useGameStore((s) => s.coins)
   const wave = useGameStore((s) => s.wave)
+  const shownCoins = useCountUp(coins)
+  const controls = useAnimationControls()
+  const prevCoins = useRef(coins)
+
+  useEffect(() => {
+    if (coins !== prevCoins.current) {
+      controls.start({ scale: [1, 1.18, 1], transition: { duration: 0.35 } })
+      prevCoins.current = coins
+    }
+  }, [coins, controls])
+
   return (
     <div className="hud-top">
       <div className="hud-pill lives">
@@ -27,10 +64,10 @@ function TopHud() {
         <span className="label">WAVE</span>
         <span className="num">{wave}</span>
       </div>
-      <div className="hud-pill coins">
+      <motion.div className="hud-pill coins" animate={controls}>
         <span className="icon">🪙</span>
-        <span>{coins}</span>
-      </div>
+        <span>{shownCoins}</span>
+      </motion.div>
     </div>
   )
 }
@@ -42,13 +79,13 @@ function FightDock() {
   return (
     <div className="fight-dock">
       {boss && <div className="boss-badge">⚠ BOSS WAVE</div>}
-      <button
+      <TapButton
         className={`candy-btn${boss ? ' boss' : ''}`}
         type="button"
         onClick={startFight}
       >
         ⚔ FIGHT
-      </button>
+      </TapButton>
     </div>
   )
 }
@@ -89,9 +126,9 @@ function GameOverOverlay() {
           <span>{isNewBest ? '🏆 New Best!' : 'Best'}</span>
           <b>Wave {bestWave}</b>
         </div>
-        <button className="candy-btn" type="button" onClick={restart}>
+        <TapButton className="candy-btn" type="button" onClick={restart}>
           ↺ PLAY AGAIN
-        </button>
+        </TapButton>
       </div>
     </div>
   )
@@ -169,6 +206,9 @@ export default function App() {
 
       {phase === 'prep' && <Shop />}
       {phase === 'fight' && <BattleStrip />}
+
+      <CoinFly />
+      <Confetti />
     </div>
   )
 }

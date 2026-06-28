@@ -97,4 +97,30 @@ export const sfx = {
     tone({ freq: 311, dur: 0.16, type: 'triangle', gain: 0.14, delay: 0.14 })
     tone({ freq: 233, dur: 0.32, type: 'triangle', gain: 0.16, delay: 0.28 })
   },
+  tap() {
+    tone({ freq: 660, dur: 0.04, type: 'triangle', gain: 0.08, slideTo: 880 })
+  },
+  /** A short filtered-noise swell — stadium crowd roar on victory. */
+  crowd() {
+    const c = audio()
+    if (!c) return
+    const dur = 1.1
+    const buf = c.createBuffer(1, Math.floor(c.sampleRate * dur), c.sampleRate)
+    const data = buf.getChannelData(0)
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1
+    const src = c.createBufferSource()
+    src.buffer = buf
+    const bp = c.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.frequency.value = 850
+    bp.Q.value = 0.6
+    const g = c.createGain()
+    const t0 = c.currentTime
+    g.gain.setValueAtTime(0.0001, t0)
+    g.gain.exponentialRampToValueAtTime(0.2, t0 + 0.3)
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur)
+    src.connect(bp).connect(g).connect(c.destination)
+    src.start(t0)
+    src.stop(t0 + dur)
+  },
 }

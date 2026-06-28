@@ -91,6 +91,8 @@ interface GameState {
   bursts: Burst[]
   kickAt: number
   kickPower: number
+  /** Camera zoom-punch trigger timestamp (read by the camera rig). */
+  zoomAt: number
   rerollCost: number
 
   moveUnit: (from: SlotRef, to: SlotRef) => void
@@ -112,6 +114,7 @@ const firstEmpty = (arr: (UnitInstance | null)[]) => arr.findIndex((x) => !x)
 export const useGameStore = create<GameState>((set, get) => ({
   ...initialRun(),
   bestWave: loadBest(),
+  zoomAt: 0,
   rerollCost: REROLL_COST,
 
   moveUnit: (from, to) => {
@@ -205,6 +208,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       modifierAnnounce: s.modifier === 'none' ? null : s.modifier,
       kickAt: performance.now(),
       kickPower: 0.22,
+      zoomAt: performance.now(),
     })
     sfx.fight()
   },
@@ -229,6 +233,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         modifier: rollModifierId(), // roll the next wave's arena rule
       })
       sfx.win()
+      sfx.crowd()
       return
     }
 

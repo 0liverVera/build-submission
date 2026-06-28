@@ -254,13 +254,41 @@ function LionMesh() {
   )
 }
 
+interface FlashMat {
+  mat: THREE.MeshStandardMaterial
+  baseE: THREE.Color
+  baseI: number
+}
+
 function CombatUnit({ c }: { c: Combatant }) {
   const g = useRef<THREE.Group>(null)
   const fill = useRef<THREE.Mesh>(null)
+  const mats = useRef<FlashMat[]>([])
+  const white = useMemo(() => new THREE.Color('#ffffff'), [])
+
   useLayoutEffect(() => {
     c.group = g.current
     c.hpFill = fill.current
+    const found: FlashMat[] = []
+    g.current?.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.Material | undefined
+      if (m && (m as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
+        const sm = m as THREE.MeshStandardMaterial
+        found.push({ mat: sm, baseE: sm.emissive.clone(), baseI: sm.emissiveIntensity })
+      }
+    })
+    mats.current = found
   }, [c])
+
+  // White flash on hit (Section 4): lerp emissive toward white by the hit timer.
+  useFrame(() => {
+    const f = c.hitT > 0 ? Math.min(c.hitT / 0.18, 1) : 0
+    for (const e of mats.current) {
+      e.mat.emissive.copy(e.baseE).lerp(white, f * 0.85)
+      e.mat.emissiveIntensity = e.baseI + f * 0.9
+    }
+  })
+
   const barColor = c.team === 'player' ? '#4ad24a' : '#e8503a'
   const barW = c.isBoss ? 1.6 : 0.9
   return (

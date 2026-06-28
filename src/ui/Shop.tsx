@@ -1,6 +1,7 @@
 import { useGameStore } from '../game/store'
 import { UNIT_DEFS } from '../game/units'
 import type { UnitType } from '../game/types'
+import TapButton from './TapButton'
 
 /** Quick 2D icon per unit for the shop cards (real 3D portraits come later). */
 const ICON: Record<UnitType, { emoji: string; color: string }> = {
@@ -23,7 +24,7 @@ function ShopCard({
   const def = UNIT_DEFS[type]
   const icon = ICON[type]
   return (
-    <button
+    <TapButton
       type="button"
       className={`shop-card${affordable ? '' : ' broke'}`}
       onClick={onBuy}
@@ -36,7 +37,7 @@ function ShopCard({
         <span>🪙</span>
         <span>{def.cost}</span>
       </div>
-    </button>
+    </TapButton>
   )
 }
 
@@ -51,14 +52,14 @@ export default function Shop() {
     <div className="shop-bar">
       <div className="shop-head">
         <span className="shop-title">RECRUIT</span>
-        <button
+        <TapButton
           type="button"
           className="reroll-btn"
           onClick={reroll}
           disabled={coins < rerollCost}
         >
           🔄 <b>{rerollCost}</b>
-        </button>
+        </TapButton>
       </div>
 
       <div className="shop-row">

@@ -84,13 +84,17 @@ function CameraRig() {
     const driftX = Math.sin(t.current * 0.18) * 0.5
     const driftY = Math.sin(t.current * 0.25) * 0.18
 
-    const { kickAt, kickPower } = useGameStore.getState()
+    const { kickAt, kickPower, zoomAt } = useGameStore.getState()
     const since = (performance.now() - kickAt) / 1000
     const shake = since >= 0 && since < 0.4 ? kickPower * (1 - since / 0.4) : 0
 
+    // Zoom-punch: dive the camera in then ease back out when a fight starts.
+    const zt = (performance.now() - zoomAt) / 1000
+    const zoom = zt >= 0 && zt < 0.5 ? Math.sin((zt / 0.5) * Math.PI) * 1.6 : 0
+
     cam.position.x = driftX + (Math.random() * 2 - 1) * shake
-    cam.position.y = 13 + driftY + (Math.random() * 2 - 1) * shake
-    cam.position.z = 13.5
+    cam.position.y = 13 - zoom * 0.5 + driftY + (Math.random() * 2 - 1) * shake
+    cam.position.z = 13.5 - zoom
     cam.lookAt(0, 0.4, -0.3)
   })
   return null

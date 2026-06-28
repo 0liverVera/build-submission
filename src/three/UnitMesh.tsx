@@ -168,17 +168,28 @@ export default function UnitMesh({
   const g = useRef<THREE.Group>(null)
   const age = useRef(0)
   const done = useRef(!pop)
+  const phase = useRef(Math.random() * Math.PI * 2)
+  const clock = useRef(0)
 
   useFrame((_, dt) => {
-    if (done.current || !g.current) return
-    age.current += dt
-    const t = Math.min(age.current / 0.32, 1)
-    const s = 0.3 + 0.7 * easeOutBack(t)
-    g.current.scale.setScalar(s)
-    if (t >= 1) {
-      g.current.scale.setScalar(1)
-      done.current = true
+    if (!g.current) return
+    // Slam-in pop on mount
+    if (!done.current) {
+      age.current += dt
+      const t = Math.min(age.current / 0.32, 1)
+      g.current.scale.setScalar(0.3 + 0.7 * easeOutBack(t))
+      if (t >= 1) {
+        g.current.scale.setScalar(1)
+        done.current = true
+      }
+      return
     }
+    // Subtle idle bob + breathing so units feel alive at rest
+    clock.current += dt
+    const p = clock.current * 1.8 + phase.current
+    g.current.position.y = Math.sin(p) * 0.025
+    const breathe = 1 + Math.sin(p) * 0.012
+    g.current.scale.set(1, breathe, 1)
   })
 
   const teamColor = team === 'player' ? '#3a7be8' : '#e8503a'
