@@ -64,10 +64,6 @@ export default function Hub() {
           <span className="ic">🛒</span>
           <span className="lbl">STORE</span>
         </button>
-        <button className="nav-card beta" onClick={() => go('practice')}>
-          <span className="ic">🆕</span>
-          <span className="lbl">5v5 BETA</span>
-        </button>
       </div>
     </div>
   )

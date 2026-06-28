@@ -86,7 +86,6 @@ export default function App() {
       {screen === 'press' && <Press />}
       {screen === 'store' && <Store />}
       {screen === 'teameditor' && <TeamEditor />}
-      {screen === 'practice' && <Court5v5 />}
       <Toast />
     </div>
   )

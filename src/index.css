@@ -810,48 +810,49 @@ body {
 /* --- 5v5 on-screen action buttons (overhaul) --- */
 .c5-buttons {
   position: absolute;
-  right: calc(env(safe-area-inset-right) + 14px);
-  bottom: calc(env(safe-area-inset-bottom) + 16px);
+  right: calc(env(safe-area-inset-right) + 10px);
+  bottom: calc(env(safe-area-inset-bottom) + 8px);
   z-index: 10;
   display: grid;
   grid-template-columns: repeat(2, auto);
-  gap: 10px;
+  gap: 6px;
   align-items: end;
   justify-items: center;
   touch-action: none;
+  opacity: 0.92;
 }
 .c5-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 62px;
-  height: 62px;
+  width: 44px;
+  height: 44px;
   border: none;
   border-radius: 50%;
-  font-size: 22px;
+  font-size: 18px;
   color: var(--ink);
   cursor: pointer;
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
-  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.4);
 }
 .c5-btn small {
   font-family: var(--font-pixel);
-  font-size: 7px;
-  margin-top: 2px;
+  font-size: 6px;
+  margin-top: 1px;
 }
 .c5-btn:active {
   transform: translateY(3px);
-  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
 }
 .c5-btn.shoot {
   grid-column: 2;
   grid-row: 1;
-  width: 78px;
-  height: 78px;
-  font-size: 28px;
+  width: 56px;
+  height: 56px;
+  font-size: 22px;
   background: linear-gradient(180deg, #ffa860, var(--orange-deep));
   color: #fff;
 }
