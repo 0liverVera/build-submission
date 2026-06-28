@@ -12,6 +12,15 @@ export interface Player {
   age: number
   /** 0–100; drives morale faces and (later) performance. */
   morale: number
+  /** Cap hit in cap units (Phase 7). */
+  salary: number
+}
+
+export interface OffseasonData {
+  prospects: Player[]
+  freeAgents: Player[]
+  retired: string[]
+  drafted: boolean
 }
 
 export type FacilityKey = 'training' | 'medical' | 'scouting' | 'stadium'
@@ -81,6 +90,8 @@ export interface Franchise {
   titles: number
   /** Per-player seasons played, keyed by player id (for HoF legacy). */
   tenure: Record<string, number>
+  /** Active offseason draft/FA pools (Phase 7); cleared on new season. */
+  offseason?: OffseasonData | null
 }
 
 export type Screen =
@@ -89,6 +100,7 @@ export type Screen =
   | 'hub'
   | 'game'
   | 'season'
+  | 'offseason'
   | 'roster'
   | 'frontoffice'
   | 'press'

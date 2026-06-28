@@ -33,7 +33,7 @@ const ARCH: Record<Position, { sh: number; sp: number; in: number; de: number }>
 export function genPlayer(pos: Position): Player {
   const a = ARCH[pos]
   const j = (base: number) => clamp(base + rRange(-2, 2), 1, 10)
-  return {
+  const p: Player = {
     id: newId(),
     name: `${rnd(FIRST)} ${rnd(LAST)}`,
     pos,
@@ -43,7 +43,29 @@ export function genPlayer(pos: Position): Player {
     defense: j(a.de),
     age: rRange(20, 33),
     morale: rRange(58, 86),
+    salary: 0,
   }
+  p.salary = salaryFor(p)
+  return p
+}
+
+/** Cap hit derived from overall + age (young = cheaper). */
+export function salaryFor(p: Player): number {
+  return clamp(Math.round(overall(p) * 5 + (p.age < 24 ? -4 : 0)), 4, 70)
+}
+
+const randomPos = () => POSITIONS[Math.floor(Math.random() * POSITIONS.length)]
+
+/** A cheap young draft prospect. */
+export function genProspect(): Player {
+  const p = genPlayer(randomPos())
+  p.age = rRange(19, 21)
+  p.salary = clamp(Math.round(overall(p) * 4 + rRange(-2, 2)), 3, 38)
+  return p
+}
+
+export function genFreeAgent(): Player {
+  return genPlayer(randomPos())
 }
 
 export function generateRoster(): Player[] {

@@ -1,6 +1,14 @@
 import { create } from 'zustand'
 import type { Franchise, Screen, FacilityKey, Player } from '../types'
-import { generateRoster, genPlayer, overall, POSITIONS } from '../game/players'
+import {
+  generateRoster,
+  genPlayer,
+  genProspect,
+  genFreeAgent,
+  salaryFor,
+  overall,
+  POSITIONS,
+} from '../game/players'
 import {
   generateLeague,
   freshSeasonState,
@@ -13,6 +21,10 @@ import { sfx } from '../audio/sfx'
 const clampN = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 const DEFAULT_FACILITIES = { training: 1, medical: 1, scouting: 1, stadium: 1 }
 export const FACILITY_COST = (level: number) => 20 + level * 20
+export const SALARY_CAP = 250
+export const ROSTER_MAX = 8
+export const capUsed = (roster: { salary: number }[]) =>
+  roster.reduce((s, p) => s + (p.salary ?? 0), 0)
 
 type OppInfo = { city: string; name: string; abbr: string; color: string; offense: number }
 
@@ -81,6 +93,13 @@ function loadSave(): Franchise | null {
       Object.assign(f, initSeason())
       dirty = true
     }
+    // Phase 7: backfill salaries on older saves.
+    for (const p of f.roster) {
+      if (typeof p.salary !== 'number') {
+        p.salary = salaryFor(p)
+        dirty = true
+      }
+    }
     if (dirty) writeSave(f)
     return f
   } catch {
@@ -126,8 +145,16 @@ interface GameStore {
   currentOpponent: () => OppInfo | null
   /** Advance the season after a finished game (record + standings + phase). */
   advanceSeason: (win: boolean) => void
-  /** Offseason rollover: goal eval, aging/retirement/HoF, fresh season. */
-  startNextSeason: () => void
+  /** Begin the offseason: goal eval, aging/retirement/HoF, draft + FA pools. */
+  enterOffseason: () => void
+  /** Draft a prospect onto the roster. */
+  draftPlayer: (id: string) => void
+  /** Sign a free agent if under cap + roster limit. */
+  signFreeAgent: (id: string) => void
+  /** Cut a player to free cap space. */
+  cutPlayer: (id: string) => void
+  /** Commit the offseason → fresh season. */
+  commitNextSeason: () => void
   /** Persist the current franchise — call after every meta change. */
   autosave: () => void
 }
@@ -331,9 +358,10 @@ export const useGame = create<GameStore>((set, get) => ({
     set({ franchise: nf })
   },
 
-  startNextSeason: () => {
+  enterOffseason: () => {
     const f = get().franchise
     if (!f) return
+    if (f.offseason) return // already prepared
     const s = f.seasonState
     const champion = s.alive
     const rank = playerRank({ ...playerEntry(f), w: s.wins, l: s.losses }, f.league)
@@ -354,52 +382,122 @@ export const useGame = create<GameStore>((set, get) => ({
     // Age, grow/decline, retire → Hall of Fame.
     const tenure = { ...f.tenure }
     const hof = [...f.hallOfFame]
+    const retired: string[] = []
     const growthChance = 0.35 + f.facilities.training * 0.05
-    const aged: Player[] = f.roster.map((p) => {
+    const setKey = (np: Player, k: keyof Player, d: number) => {
+      ;(np as unknown as Record<string, number>)[k as string] = clampN(
+        (np as unknown as Record<string, number>)[k as string] + d,
+        1,
+        10,
+      )
+    }
+    const survivors: Player[] = []
+    for (const p of f.roster) {
       tenure[p.id] = (tenure[p.id] ?? 0) + 1
       const np: Player = { ...p, age: p.age + 1 }
-      if (np.age <= 25 && Math.random() < growthChance) {
-        const k = rndKey()
-        ;(np as unknown as Record<string, number>)[k] = clampN((np as unknown as Record<string, number>)[k] + 1, 1, 10)
-      }
-      if (np.age >= 31 && Math.random() < 0.5) {
-        const k = rndKey()
-        ;(np as unknown as Record<string, number>)[k] = clampN((np as unknown as Record<string, number>)[k] - 1, 1, 10)
-      }
-      return np
-    })
-    const survivors: Player[] = []
-    for (const p of aged) {
-      const retire = p.age >= 35 || (p.age >= 32 && Math.random() < 0.35)
+      if (np.age <= 25 && Math.random() < growthChance) setKey(np, rndKey(), +1)
+      if (np.age >= 31 && Math.random() < 0.5) setKey(np, rndKey(), -1)
+      np.salary = salaryFor(np)
+      const retire = np.age >= 35 || (np.age >= 32 && Math.random() < 0.35)
       if (retire) {
         hof.push({
-          name: p.name,
-          pos: p.pos,
-          overall: overall(p),
-          seasons: tenure[p.id] ?? 1,
+          name: np.name,
+          pos: np.pos,
+          overall: overall(np),
+          seasons: tenure[np.id] ?? 1,
           titles: f.titles,
         })
-        delete tenure[p.id]
+        retired.push(np.name)
+        delete tenure[np.id]
       } else {
-        survivors.push(p)
+        survivors.push(np)
       }
     }
     const roster = rebuildRoster(survivors)
-
     const reward = (goalMet ? 60 : 0) + (champion ? 100 : 0)
-    const league = generateLeague()
+
     const nf: Franchise = {
       ...f,
       roster,
       tenure,
       hallOfFame: hof,
-      league,
-      seasonState: freshSeasonState(league),
-      season: f.season + 1,
       titles: f.titles + (champion ? 1 : 0),
       failedGoals,
       credits: f.credits + reward,
       fanInterest: clampN(f.fanInterest + (champion ? 12 : goalMet ? 4 : -6), 0, 100),
+      offseason: {
+        prospects: [genProspect(), genProspect(), genProspect()],
+        freeAgents: Array.from({ length: 5 }, genFreeAgent),
+        retired,
+        drafted: false,
+      },
+    }
+    writeSave(nf)
+    set({ franchise: nf })
+  },
+
+  draftPlayer: (id) => {
+    const f = get().franchise
+    if (!f || !f.offseason || f.offseason.drafted) return
+    const pick = f.offseason.prospects.find((p) => p.id === id)
+    if (!pick) return
+    const nf: Franchise = {
+      ...f,
+      roster: [...f.roster, pick],
+      offseason: { ...f.offseason, drafted: true },
+    }
+    writeSave(nf)
+    set({ franchise: nf })
+    sfx.confirm()
+  },
+
+  signFreeAgent: (id) => {
+    const f = get().franchise
+    if (!f || !f.offseason) return
+    const fa = f.offseason.freeAgents.find((p) => p.id === id)
+    if (!fa) return
+    if (f.roster.length >= ROSTER_MAX || capUsed(f.roster) + fa.salary > SALARY_CAP) {
+      sfx.deny()
+      return
+    }
+    const nf: Franchise = {
+      ...f,
+      roster: [...f.roster, fa],
+      offseason: {
+        ...f.offseason,
+        freeAgents: f.offseason.freeAgents.filter((p) => p.id !== id),
+      },
+    }
+    writeSave(nf)
+    set({ franchise: nf })
+    sfx.confirm()
+  },
+
+  cutPlayer: (id) => {
+    const f = get().franchise
+    if (!f) return
+    if (f.roster.length <= 5) {
+      sfx.deny()
+      return
+    }
+    const nf: Franchise = { ...f, roster: f.roster.filter((p) => p.id !== id) }
+    writeSave(nf)
+    set({ franchise: nf })
+    sfx.tap()
+  },
+
+  commitNextSeason: () => {
+    const f = get().franchise
+    if (!f) return
+    const roster = rebuildRoster(f.roster)
+    const league = generateLeague()
+    const nf: Franchise = {
+      ...f,
+      roster,
+      league,
+      seasonState: freshSeasonState(league),
+      season: f.season + 1,
+      offseason: null,
     }
     writeSave(nf)
     set({ franchise: nf })

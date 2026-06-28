@@ -9,7 +9,7 @@ import { standings } from '../game/league'
 export default function Season() {
   const f = useGame((s) => s.franchise)
   const navigate = useGame((s) => s.navigate)
-  const startNextSeason = useGame((s) => s.startNextSeason)
+  const enterOffseason = useGame((s) => s.enterOffseason)
   const currentOpponent = useGame((s) => s.currentOpponent)
   if (!f) return null
 
@@ -57,8 +57,14 @@ export default function Season() {
     cta = (
       <div className="season-cta">
         <div className="sc-result">{s.lastResult || 'Season complete.'}</div>
-        <Button variant="primary" onClick={() => startNextSeason()}>
-          ↻ START SEASON {f.season + 1}
+        <Button
+          variant="primary"
+          onClick={() => {
+            enterOffseason()
+            navigate('offseason')
+          }}
+        >
+          → ENTER OFFSEASON
         </Button>
       </div>
     )
