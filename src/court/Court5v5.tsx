@@ -1051,14 +1051,14 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
             <span className="sb-abbr">{hud.homeAbbr}</span>
             <span className="sb-score">{hud.us}</span>
           </div>
+          <div className="sb-team opp" style={{ ['--p']: oppColorUi } as React.CSSProperties}>
+            <span className="sb-score">{hud.them}</span>
+            <span className="sb-abbr">{hud.awayAbbr}</span>
+          </div>
           <div className="sb-center">
             <span className="sb-q">Q{hud.quarter}</span>
             <span className={`sb-clock${hud.clock <= 10 ? ' clutch' : ''}`}>{mmss(hud.clock)}</span>
             <span className={`sb-shot${hud.shot <= 5 ? ' low' : ''}`}>:{hud.shot}</span>
-          </div>
-          <div className="sb-team opp" style={{ ['--p']: oppColorUi } as React.CSSProperties}>
-            <span className="sb-score">{hud.them}</span>
-            <span className="sb-abbr">{hud.awayAbbr}</span>
           </div>
         </div>
       ) : (

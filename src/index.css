@@ -542,24 +542,33 @@ body {
 
 /* --- Match scoreboard + flow (Phase 3) --- */
 .scoreboard {
-  flex: 0 0 auto;
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: calc(env(safe-area-inset-top) + 3px) 12px 3px;
-  background: linear-gradient(180deg, #1f2540 0%, #161a2e 100%);
-  border-bottom: 2px solid #0a0c16;
+  padding: 3px 9px;
+  border-radius: 11px;
+  background: rgba(11, 14, 28, 0.58);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(2px);
+}
+.scoreboard .court-back {
+  width: 26px;
+  height: 26px;
+  font-size: 18px;
+  background: rgba(255, 255, 255, 0.12);
 }
 .sb-team {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 2px 9px;
-  border-radius: 9px;
+  border-radius: 8px;
   background: var(--p, var(--orange));
-}
-.sb-team.opp {
-  margin-left: auto;
 }
 .sb-abbr {
   font-family: var(--font-pixel);
