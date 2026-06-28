@@ -70,8 +70,12 @@ export default function Court5v5() {
     let ballR = 10
     let band = 26
     let SPEED = 300
+    let AISPEED = 230
 
     const home: P[] = HOME.map(() => ({ x: 0, y: 0, team: 'home' }))
+    // Teammate offense AI: each holds a base spot + occasionally cuts to the rim.
+    const cutUntil = new Array(5).fill(0)
+    let nextCutAt = 0
     const away: P[] = AWAY.map(() => ({ x: 0, y: 0, team: 'away' }))
     let active = 0
 
@@ -121,6 +125,7 @@ export default function Court5v5() {
       ballR = pr * 0.55
       band = H * 0.07
       SPEED = H * 1.15
+      AISPEED = SPEED * 0.78
       maxR = Math.min(W, H) * 0.12
       home.forEach((p, i) => {
         p.x = HOME[i][0] * W
@@ -261,6 +266,51 @@ export default function Court5v5() {
       const a = home[active]
       a.x = clamp(a.x + vx * speed * dt, W * 0.05, W * 0.95)
       a.y = clamp(a.y + vy * speed * dt, band + pr, H - band - pr)
+
+      // --- teammate offense AI (the 4 you don't control) ---
+      // stagger basket cuts so one teammate slashes at a time
+      if (now > nextCutAt) {
+        nextCutAt = now + 2.4 + Math.random() * 1.8
+        const cands: number[] = []
+        for (let i = 0; i < home.length; i++) if (i !== active && now >= cutUntil[i]) cands.push(i)
+        if (cands.length) cutUntil[cands[(Math.random() * cands.length) | 0]] = now + 1.2
+      }
+      for (let i = 0; i < home.length; i++) {
+        if (i === active) continue
+        const p = home[i]
+        let dxT: number
+        let dyT: number
+        if (now < cutUntil[i]) {
+          // cut toward the rim with a little vertical spread
+          dxT = rimX - pr * 2.6
+          dyT = rimY + (i - 2) * pr * 1.1
+        } else {
+          // hold your spot
+          dxT = HOME[i][0] * W
+          dyT = HOME[i][1] * H
+        }
+        // spacing: push away from anyone too close
+        let sx = 0
+        let sy = 0
+        for (const o of [...home, ...away]) {
+          if (o === p) continue
+          const d = dist(p.x, p.y, o.x, o.y)
+          if (d > 0.1 && d < pr * 3) {
+            sx += (p.x - o.x) / d
+            sy += (p.y - o.y) / d
+          }
+        }
+        const tx = dxT + sx * pr * 1.6
+        const ty = dyT + sy * pr * 1.6
+        const ddx = tx - p.x
+        const ddy = ty - p.y
+        const dd = Math.hypot(ddx, ddy)
+        if (dd > 2) {
+          const s = Math.min(AISPEED * dt, dd)
+          p.x = clamp(p.x + (ddx / dd) * s, W * 0.05, W * 0.95)
+          p.y = clamp(p.y + (ddy / dd) * s, band + pr, H - band - pr)
+        }
+      }
 
       // offense intents (only while live and holding the ball)
       if (phase === 'live') {
