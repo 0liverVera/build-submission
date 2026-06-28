@@ -132,4 +132,7 @@ export const sfx = {
   buzzer() {
     tone({ freq: 170, dur: 0.5, type: 'square', gain: 0.14, slideTo: 150 })
   },
+  deny() {
+    tone({ freq: 200, dur: 0.16, type: 'sawtooth', gain: 0.1, slideTo: 110 })
+  },
 }

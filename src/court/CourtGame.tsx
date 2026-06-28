@@ -66,6 +66,8 @@ interface CourtGameProps {
   onShotClock?: (sec: number) => void
   /** Per-position starter ratings (FORMATION order: PG,SG,SF,PF,C). */
   ratings?: OnCourtRating[]
+  /** Team-morale multiplier on the make window (≈0.9–1.12). */
+  moraleMult?: number
 }
 
 const DEFAULT_RATING: OnCourtRating = { shooting: 6, speed: 6, inside: 6 }
@@ -75,6 +77,7 @@ export default function CourtGame({
   onResult,
   onShotClock,
   ratings,
+  moraleMult = 1,
 }: CourtGameProps) {
   const navigate = useGame((s) => s.navigate)
   const franchise = useGame((s) => s.franchise)
@@ -85,6 +88,8 @@ export default function CourtGame({
   onShotClockRef.current = onShotClock
   const ratingsRef = useRef(ratings)
   ratingsRef.current = ratings
+  const moraleMultRef = useRef(moraleMult)
+  moraleMultRef.current = moraleMult
   const [hud, setHud] = useState<Hud>({
     points: 0,
     made: 0,
@@ -258,7 +263,7 @@ export default function CourtGame({
       ball.vy = (dir.y * range) / ball.dur
       ball.three = dist(p.x, p.y, rimX, rimY) > arcR
       contested = nearestDefenderTo(p.x, p.y) < pr * 3.2
-      shotTolMult = shootMult(rating(handler).shooting)
+      shotTolMult = shootMult(rating(handler).shooting) * moraleMultRef.current
       phase = 'shooting'
       att++
       sfx.shoot()
@@ -591,6 +596,7 @@ export default function CourtGame({
       const tol =
         TOL *
         shootMult(rating(handler).shooting) *
+        moraleMultRef.current *
         (nearestDefenderTo(p.x, p.y) < pr * 3.2 ? 0.62 : 1)
       const inRim = dist(lx, ly, rimX, rimY) < tol
       ctx!.strokeStyle = inRim ? 'rgba(90,230,140,0.95)' : 'rgba(255,255,255,0.8)'

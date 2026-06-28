@@ -4,6 +4,8 @@ import NewFranchise from './screens/NewFranchise'
 import Hub from './screens/Hub'
 import Placeholder from './screens/Placeholder'
 import Roster from './screens/Roster'
+import FrontOffice from './screens/FrontOffice'
+import Press from './screens/Press'
 import GameScreen from './court/GameScreen'
 import RotateGate from './ui/RotateGate'
 
@@ -18,13 +20,8 @@ export default function App() {
       {screen === 'hub' && <Hub />}
       {screen === 'game' && <GameScreen />}
       {screen === 'roster' && <Roster />}
-      {screen === 'frontoffice' && (
-        <Placeholder
-          title="FRONT OFFICE"
-          icon="🏢"
-          note="Facilities, morale & press events arrive in Phase 5."
-        />
-      )}
+      {screen === 'frontoffice' && <FrontOffice />}
+      {screen === 'press' && <Press />}
       {screen === 'store' && (
         <Placeholder
           title="STORE"

@@ -880,6 +880,137 @@ body {
   color: var(--cream);
 }
 
+/* --- Front Office (Phase 5) --- */
+.fo-stats {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.fo-pill {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cream);
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+.fo-pill.gold {
+  color: var(--gold);
+}
+.fo-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  align-content: stretch;
+}
+.fo-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 10px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 2px solid var(--line);
+}
+.fo-ic {
+  font-size: 40px;
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.35));
+}
+.fo-name {
+  font-family: var(--font-pixel);
+  font-size: 12px;
+  color: var(--cream);
+}
+.fo-dots {
+  display: flex;
+  gap: 5px;
+}
+.fo-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--line);
+}
+.fo-dot.on {
+  background: var(--gold);
+  border-color: var(--gold-deep);
+}
+.fo-effect {
+  flex: 1 1 auto;
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.3;
+}
+.fo-up {
+  width: 100%;
+  font-size: 12px;
+  padding: 11px 10px;
+}
+
+/* --- Press / decision event (Phase 5) --- */
+.press-screen {
+  align-items: center;
+  justify-content: center;
+}
+.press-card {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 3px solid var(--line);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  animation: msgPop 0.35s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.press-tag {
+  font-size: 10px;
+  letter-spacing: 2px;
+  font-weight: 700;
+  color: var(--orange);
+}
+.press-speaker {
+  font-family: var(--font-pixel);
+  font-size: 14px;
+  color: var(--gold);
+}
+.press-prompt {
+  font-size: 17px;
+  line-height: 1.4;
+  color: var(--cream);
+}
+.press-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.press-choices .btn {
+  width: 100%;
+  font-size: 12px;
+  text-align: center;
+}
+.press-result {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pr-text {
+  font-size: 16px;
+  color: var(--teal);
+  line-height: 1.4;
+}
+.press-result .btn {
+  width: 100%;
+}
+
 /* --- Placeholder shells --- */
 .ph-body {
   flex: 1 1 auto;

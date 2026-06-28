@@ -49,6 +49,7 @@ export default function GameScreen() {
   const navigate = useGame((s) => s.navigate)
   const franchise = useGame((s) => s.franchise)
   const recordGameResult = useGame((s) => s.recordGameResult)
+  const triggerPressEvent = useGame((s) => s.triggerPressEvent)
 
   const oppRef = useRef<Opp>(makeOpp())
   const opp = oppRef.current
@@ -76,6 +77,10 @@ export default function GameScreen() {
     inside: p.inside,
   }))
   const ourDefense = teamDefense(roster)
+  const avgMorale = roster.length
+    ? roster.slice(0, 5).reduce((s, p) => s + p.morale, 0) / Math.min(5, roster.length)
+    : 60
+  const moraleMult = Math.max(0.9, Math.min(1.12, 1 + (avgMorale - 60) / 300))
 
   function advanceClock() {
     const next = Math.max(0, clockRef.current - (TIME_PER_POSS + (Math.random() * 6 - 3)))
@@ -161,6 +166,7 @@ export default function GameScreen() {
             key={possKey}
             matchMode
             ratings={ratings}
+            moraleMult={moraleMult}
             onResult={(pts) => endPlayerPossession(pts)}
             onShotClock={(s) => setShotClock(s)}
           />
@@ -184,9 +190,11 @@ export default function GameScreen() {
             them={them}
             home={teamAbbr}
             opp={opp}
+            fanInterest={franchise?.fanInterest ?? 50}
             onDone={(win, credits) => {
               recordGameResult(win, credits)
-              navigate('hub')
+              const hasEvent = triggerPressEvent()
+              navigate(hasEvent ? 'press' : 'hub')
             }}
           />
         )}
@@ -298,16 +306,18 @@ function FinalCard({
   them,
   home,
   opp,
+  fanInterest,
   onDone,
 }: {
   us: number
   them: number
   home: string
   opp: Opp
+  fanInterest: number
   onDone: (win: boolean, credits: number) => void
 }) {
   const win = us > them
-  const credits = 20 + (win ? 30 : 0) + Math.floor(us / 4)
+  const credits = 20 + (win ? 30 : 0) + Math.floor(us / 4) + Math.floor(fanInterest / 10)
   useEffect(() => {
     if (win) sfx.three()
     else sfx.buzzer()
