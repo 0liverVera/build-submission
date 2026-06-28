@@ -128,6 +128,8 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
 
     const cutUntil = new Array(5).fill(0)
     let nextCutAt = 0
+    const awayCut = new Array(5).fill(0)
+    let awayNextCut = 0
 
     const ball = { x: 0, y: 0, z: 0, t: 0, dur: 0.7, peak: 60 }
     let possession: Team = 'home'
@@ -427,38 +429,46 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       }
     }
 
+    // Opponent offense: patient, drives + kicks out, takes good shots, cuts.
     function runAwayOffenseAI(dt: number) {
       const rx = atkX('away')
       const bh = away[awayHandler]
       const openD = nearestDist(bh, home)
       const d2 = dist(bh.x, bh.y, rx, rimY)
+      const contested = openD < pr * 2.7
+
       if (now > awayThinkAt) {
-        awayThinkAt = now + 0.35
+        awayThinkAt = now + 0.3
         const elapsed = now - awayPossStart
-        if (d2 < pr * 3.8 || elapsed > 6) {
-          awayShoot()
-          return
-        }
-        if (openD > pr * 4.6 && d2 < arcR * 1.05 && Math.random() < 0.55) {
-          awayShoot()
-          return
-        }
-        let best = -1
-        let bs = openD + pr * 1.8
+        // most-open teammate
+        let bestT = -1
+        let bestOpen = -Infinity
         for (let i = 0; i < away.length; i++) {
           if (i === awayHandler) continue
           const od = nearestDist(away[i], home)
-          if (od > bs) {
-            bs = od
-            best = i
+          if (od > bestOpen) {
+            bestOpen = od
+            bestT = i
           }
         }
-        if (best >= 0 && Math.random() < 0.5) {
-          awayHandler = best
+        const forced = shotClock < 5 || elapsed > 11
+        if (d2 < pr * 3.6 && !contested) return awayShoot() // open at the rim
+        if (forced) return awayShoot() // beat the clock
+        if (!contested && openD > pr * 5 && d2 < arcR * 1.05 && elapsed > 2 && Math.random() < 0.5)
+          return awayShoot() // clean open jumper, with patience
+        if (contested && bestT >= 0 && bestOpen > pr * 4) {
+          awayHandler = bestT // driven into help → kick out
+          sfx.pass()
+          return
+        }
+        if (bestT >= 0 && bestOpen > openD + pr * 3.5 && Math.random() < 0.45) {
+          awayHandler = bestT // swing to a much more open man
           sfx.pass()
           return
         }
       }
+
+      // ball handler: probe toward the rim, sliding around the nearest defender
       let nd = Infinity
       let near: P | null = null
       for (const h of home) {
@@ -468,36 +478,71 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
           near = h
         }
       }
-      // drive toward the (left) rim from its open side
+      const driveX = d2 > arcR ? rx + (rx < W / 2 ? 1 : -1) * pr * 4 : rx + (rx < W / 2 ? 1 : -1) * pr * 2
       let ty = rimY
-      if (near && nd < pr * 2.4) ty += (bh.y < rimY ? -1 : 1) * pr * 2
-      steerTo(bh, rx + pr * 2, ty, AISPEED * 0.95, dt)
+      if (near && nd < pr * 2.6) ty += (bh.y < rimY ? -1 : 1) * pr * 2.4
+      steerTo(bh, driveX, ty, AISPEED * (contested ? 0.85 : 0.95), dt)
+
+      // off-ball: space + staggered cuts to the rim
+      if (now > awayNextCut) {
+        awayNextCut = now + 2.6 + Math.random() * 2
+        const cands: number[] = []
+        for (let i = 0; i < away.length; i++) if (i !== awayHandler && now >= awayCut[i]) cands.push(i)
+        if (cands.length) awayCut[cands[(Math.random() * cands.length) | 0]] = now + 1.1
+      }
       for (let i = 0; i < away.length; i++) {
         if (i === awayHandler) continue
+        const cutting = now < awayCut[i]
         const sp = offSpot(i, 'away')
-        steerTo(away[i], sp.x, sp.y, AISPEED * 0.8, dt)
+        const tx = cutting ? rx - (rx < W / 2 ? -1 : 1) * pr * 2.6 : sp.x
+        const tyy = cutting ? rimY + (i - 2) * pr * 1.1 : sp.y
+        steerTo(away[i], tx, tyy, AISPEED * 0.82, dt)
       }
     }
 
-    // Defenders sit between their man and the rim the offense is attacking.
-    function runHomeDefenseAI(dt: number) {
-      const rx = atkX('away') // home defends the rim away attacks (left)
-      for (let i = 0; i < home.length; i++) {
-        if (i === active) continue
-        const man = away[i % away.length]
-        const onBall = i % away.length === awayHandler
-        const tight = onBall ? 0.18 : 0.34
-        steerTo(home[i], man.x + (rx - man.x) * tight, man.y + (rimY - man.y) * tight, onBall ? AISPEED * 0.96 : AISPEED * 0.82, dt, pr * 2.4)
+    /**
+     * Pack-line man defense for whichever team is guarding:
+     * on-ball pressure, off-ball sag toward rim+ball (help position), and the
+     * nearest helper collapses on a drive into the paint, then recovers.
+     */
+    function playDefense(defs: P[], off: P[], ballIdx: number, controlled: number | null, dt: number) {
+      const rx = atkX(off[0].team) // rim the offense attacks
+      const ball = off[ballIdx]
+      for (let i = 0; i < defs.length; i++) {
+        if (controlled != null && i === controlled) continue
+        const man = off[i % off.length]
+        const onBall = i % off.length === ballIdx
+        if (onBall) {
+          steerTo(defs[i], man.x + (rx - man.x) * 0.16, man.y + (rimY - man.y) * 0.16, AISPEED * 0.97, dt, pr * 2.2)
+        } else {
+          // help position: sag toward the rim, shifted toward the ball
+          const sagX = man.x + (rx - man.x) * 0.45
+          const sagY = man.y + (rimY - man.y) * 0.45
+          steerTo(defs[i], sagX * 0.66 + ball.x * 0.34, sagY * 0.66 + ball.y * 0.34, AISPEED * 0.84, dt, pr * 2.2)
+        }
+      }
+      // help on the drive: pull the nearest off-ball defender into the lane
+      if (Math.abs(ball.x - rx) < W * 0.2) {
+        let best = -1
+        let bd = Infinity
+        for (let i = 0; i < defs.length; i++) {
+          if (i % off.length === ballIdx) continue
+          if (controlled != null && i === controlled) continue
+          const d = dist(defs[i].x, defs[i].y, ball.x, ball.y)
+          if (d < bd) {
+            bd = d
+            best = i
+          }
+        }
+        if (best >= 0) steerTo(defs[best], (ball.x + rx) / 2, (ball.y + rimY) / 2, AISPEED * 0.95, dt, pr * 2)
       }
     }
+
+    function runHomeDefenseAI(dt: number) {
+      playDefense(home, away, awayHandler, active, dt) // you control one home defender
+    }
     function runAwayDefenseAI(dt: number) {
-      const rx = atkX('home') // away defends the rim home attacks (right)
-      for (let i = 0; i < away.length; i++) {
-        const man = home[i % home.length]
-        const onBall = i % home.length === active
-        const tight = onBall ? 0.18 : 0.34
-        steerTo(away[i], man.x + (rx - man.x) * tight, man.y + (rimY - man.y) * tight, onBall ? AISPEED * 0.96 : AISPEED * 0.82, dt, pr * 2.4)
-      }
+      playDefense(away, home, active, null, dt)
       if (phase === 'live' && now > awayStealAt) {
         awayStealAt = now + 1.3 + Math.random() * 1.6
         const def = away[active % away.length]
