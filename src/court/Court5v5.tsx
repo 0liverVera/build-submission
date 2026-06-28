@@ -35,6 +35,15 @@ const AWAY: [number, number][] = [
 
 const dist = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by)
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+/** Distance from point (px,py) to segment a→b — for pass-lane interceptions. */
+function segDist(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
+  const dx = bx - ax
+  const dy = by - ay
+  const l2 = dx * dx + dy * dy
+  let t = l2 ? ((px - ax) * dx + (py - ay) * dy) / l2 : 0
+  t = clamp(t, 0, 1)
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t))
+}
 
 interface Controls {
   sprint: boolean
@@ -192,11 +201,21 @@ export default function Court5v5() {
     function doPass() {
       const target = bestPassTarget()
       if (target < 0) return
+      const a = home[active]
+      const b = home[target]
+      // a defender sitting in the lane can pick it off
+      for (let i = 0; i < away.length; i++) {
+        const d = away[i]
+        if (segDist(d.x, d.y, a.x, a.y, b.x, b.y) < pr * 1.1 && Math.random() < 0.3) {
+          result('INTERCEPTED!', 'miss')
+          sfx.aww()
+          flipToAway(i)
+          return
+        }
+      }
       passFrom = active
       passTo = target
       passT = 0
-      const a = home[passFrom]
-      const b = home[passTo]
       passDur = clamp(dist(a.x, a.y, b.x, b.y) / (W * 3), 0.16, 0.4)
       phase = 'passing'
       sfx.pass()
@@ -474,6 +493,40 @@ export default function Court5v5() {
       }
     }
 
+    // Step 7: rebound battle on a miss — nearest-to-rim (+RNG) grabs it.
+    function rebound() {
+      let bestIdx = 0
+      let bestIsHome = true
+      let bestScore = -Infinity
+      for (let i = 0; i < home.length; i++) {
+        const s = -dist(home[i].x, home[i].y, rimX, rimY) + Math.random() * pr * 4
+        if (s > bestScore) {
+          bestScore = s
+          bestIdx = i
+          bestIsHome = true
+        }
+      }
+      for (let i = 0; i < away.length; i++) {
+        const s = -dist(away[i].x, away[i].y, rimX, rimY) + Math.random() * pr * 4
+        if (s > bestScore) {
+          bestScore = s
+          bestIdx = i
+          bestIsHome = false
+        }
+      }
+      if (bestIsHome) {
+        const off = possession === 'home'
+        possession = 'home'
+        active = bestIdx
+        setOnDefense(false)
+        result(off ? 'OFF. BOARD!' : 'REBOUND', 'make')
+      } else {
+        const off = possession === 'away'
+        flipToAway(bestIdx)
+        result(off ? 'OFF. BOARD!' : 'REBOUND', 'miss')
+      }
+    }
+
     function update(dt: number) {
       t += dt
       if (shake > 0) shake = Math.max(0, shake - dt * 40)
@@ -567,31 +620,16 @@ export default function Court5v5() {
           ball.z = ball.peak * Math.sin(Math.PI * ft)
         }
       } else if (phase === 'resolved' && now >= resolveAt) {
-        // possession flips to the other team (real rebound battle = step 7)
         ball.z = 0
         result('', '')
-        if (possession === 'home') {
-          // you shot → opponent ball, you play defense
-          possession = 'away'
-          awayHandler = 0
-          awayPossStart = now
-          awayThinkAt = now + 0.7
-          let best = 0
-          let bd = Infinity
-          for (let i = 0; i < home.length; i++) {
-            const d = dist(home[i].x, home[i].y, away[awayHandler].x, away[awayHandler].y)
-            if (d < bd) {
-              bd = d
-              best = i
-            }
-          }
-          active = best
-          setOnDefense(true)
+        const shooter = possession
+        if (made) {
+          // made bucket → the other team inbounds
+          if (shooter === 'home') flipToAway(0)
+          else flipToHome()
         } else {
-          // opponent shot → your ball, you attack
-          possession = 'home'
-          active = 0
-          setOnDefense(false)
+          // miss → live rebound battle
+          rebound()
         }
         phase = 'live'
       }
