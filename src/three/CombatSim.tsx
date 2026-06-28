@@ -4,14 +4,17 @@ import { Billboard, Html } from '@react-three/drei'
 import * as THREE from 'three'
 import UnitMesh from './UnitMesh'
 import { useGameStore } from '../game/store'
-import { UNIT_DEFS, UNIT_TYPES } from '../game/units'
+import { UNIT_DEFS } from '../game/units'
+import { generateEnemyTeam, type EnemySeed } from '../game/enemies'
 import { BOARD_Y, slotPos, enemySlotPos } from '../game/layout'
 import type { UnitType, Level } from '../game/types'
 import { sfx } from '../game/sfx'
 
 const LEVEL_MULT = [1, 2.2, 5]
 const HEAL_BASE = 26
-const MAX_FIGHT_TIME = 22
+const MAX_FIGHT_TIME = 24
+const SLAM_RADIUS = 3.2
+const SLAM_COOLDOWN = 3.4
 
 interface Profile {
   atk: number
@@ -39,6 +42,9 @@ interface Combatant {
   speed: number
   heal: boolean
   healAmt: number
+  isBoss: boolean
+  slamCd: number
+  scaleMul: number
   pos: THREE.Vector3
   targetId: string | null
   cooldown: number
@@ -52,18 +58,49 @@ interface Combatant {
 let _cid = 0
 
 function makeCombatant(
-  src: { type: UnitType; level: Level },
+  src: { type: UnitType; level: Level; boss?: boolean },
   team: 'player' | 'enemy',
   pos: [number, number, number],
+  wave: number,
 ): Combatant {
-  const def = UNIT_DEFS[src.type]
-  const m = LEVEL_MULT[src.level - 1]
-  const prof = PROFILE[src.type]
-  return {
+  const base = {
     id: 'c' + ++_cid,
     team,
     type: src.type,
     level: src.level,
+    pos: new THREE.Vector3(pos[0], BOARD_Y, pos[2]),
+    targetId: null,
+    cooldown: Math.random() * 0.4,
+    alive: true,
+    deathT: -1,
+    hitT: 0,
+    group: null as THREE.Group | null,
+    hpFill: null as THREE.Mesh | null,
+  }
+
+  if (src.boss) {
+    const hp = Math.round(1700 * (1 + Math.max(0, wave - 5) * 0.12))
+    return {
+      ...base,
+      maxHp: hp,
+      hp,
+      dmg: Math.round(40 + wave * 2),
+      range: 1.7,
+      atkInterval: 1.3,
+      speed: 1.2,
+      heal: false,
+      healAmt: 0,
+      isBoss: true,
+      slamCd: 3,
+      scaleMul: 1.95,
+    }
+  }
+
+  const def = UNIT_DEFS[src.type]
+  const m = LEVEL_MULT[src.level - 1]
+  const prof = PROFILE[src.type]
+  return {
+    ...base,
     maxHp: Math.round(def.hp * m),
     hp: Math.round(def.hp * m),
     dmg: Math.round(def.dmg * m),
@@ -72,34 +109,34 @@ function makeCombatant(
     speed: prof.speed,
     heal: !!prof.heal,
     healAmt: Math.round(HEAL_BASE * m),
-    pos: new THREE.Vector3(pos[0], BOARD_Y, pos[2]),
-    targetId: null,
-    cooldown: Math.random() * 0.4,
-    alive: true,
-    deathT: -1,
-    hitT: 0,
-    group: null,
-    hpFill: null,
+    isBoss: false,
+    slamCd: 0,
+    scaleMul: 1,
   }
 }
 
-/** Simple escalating enemy team — bosses & finer tuning arrive in Phase 5/10. */
-function generateEnemyTeam(wave: number): { type: UnitType; level: Level }[] {
-  const count = Math.min(2 + Math.ceil(wave * 0.8), 9)
-  const out: { type: UnitType; level: Level }[] = []
-  for (let i = 0; i < count; i++) {
-    const type = UNIT_TYPES[Math.floor(Math.random() * UNIT_TYPES.length)]
-    const level: Level = wave >= 3 && Math.random() < 0.3 ? 2 : 1
-    out.push({ type, level })
-  }
-  return out
-}
-
-interface DmgNumber {
+interface FloatNum {
   id: number
   pos: [number, number, number]
   text: string
   color: string
+}
+interface Shock {
+  id: number
+  pos: [number, number, number]
+}
+
+function Crown() {
+  return (
+    <group position={[0, 1.78, 0]}>
+      {[-0.22, 0, 0.22].map((x, i) => (
+        <mesh key={i} position={[x, i === 1 ? 0.06 : 0, 0]}>
+          <coneGeometry args={[0.07, 0.22, 8]} />
+          <meshStandardMaterial color="#ffd54a" emissive="#ffd54a" emissiveIntensity={0.5} />
+        </mesh>
+      ))}
+    </group>
+  )
 }
 
 function CombatUnit({ c }: { c: Combatant }) {
@@ -110,20 +147,24 @@ function CombatUnit({ c }: { c: Combatant }) {
     c.hpFill = fill.current
   }, [c])
   const barColor = c.team === 'player' ? '#4ad24a' : '#e8503a'
+  const barW = c.isBoss ? 1.6 : 0.9
   return (
     <group
       ref={g}
       position={[c.pos.x, BOARD_Y, c.pos.z]}
       rotation={[0, c.team === 'player' ? Math.PI : 0, 0]}
     >
-      <UnitMesh type={c.type} level={c.level} team={c.team} pop={false} />
-      <Billboard position={[0, 2.05, 0]}>
+      <group scale={c.scaleMul}>
+        <UnitMesh type={c.type} level={c.level} team={c.team} pop={false} />
+        {c.isBoss && <Crown />}
+      </group>
+      <Billboard position={[0, c.isBoss ? 3.7 : 2.05, 0]}>
         <mesh position={[0, 0, -0.002]}>
-          <planeGeometry args={[0.94, 0.18]} />
+          <planeGeometry args={[barW + 0.04, 0.18]} />
           <meshBasicMaterial color="#2a1a0e" />
         </mesh>
-        <mesh ref={fill} position={[0, 0, 0]}>
-          <planeGeometry args={[0.9, 0.12]} />
+        <mesh ref={fill}>
+          <planeGeometry args={[barW, 0.12]} />
           <meshBasicMaterial color={barColor} />
         </mesh>
       </Billboard>
@@ -131,40 +172,71 @@ function CombatUnit({ c }: { c: Combatant }) {
   )
 }
 
+function ShockRing({ pos, onDone }: { pos: [number, number, number]; onDone: () => void }) {
+  const m = useRef<THREE.Mesh>(null)
+  const age = useRef(0)
+  useFrame((_, dt) => {
+    if (!m.current) return
+    age.current += dt
+    const k = age.current / 0.5
+    if (k >= 1) {
+      onDone()
+      return
+    }
+    const s = 0.5 + k * 4
+    m.current.scale.set(s, s, 1)
+    ;(m.current.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - k)
+  })
+  return (
+    <mesh ref={m} position={pos} rotation={[-Math.PI / 2, 0, 0]}>
+      <ringGeometry args={[0.6, 0.95, 36]} />
+      <meshBasicMaterial color="#ff6a3c" transparent depthWrite={false} />
+    </mesh>
+  )
+}
+
 export default function CombatSim() {
-  // Snapshot the board + roll the enemy team once, when the fight begins.
-  const start = useMemo(() => {
+  const combatants = useMemo(() => {
     const st = useGameStore.getState()
     const list: Combatant[] = []
     st.board.forEach((u, i) => {
-      if (u) list.push(makeCombatant(u, 'player', slotPos({ area: 'board', index: i })))
+      if (u) list.push(makeCombatant(u, 'player', slotPos({ area: 'board', index: i }), st.wave))
     })
-    generateEnemyTeam(st.wave).forEach((e, i) => {
-      list.push(makeCombatant(e, 'enemy', enemySlotPos(i)))
+    const enemies: EnemySeed[] = generateEnemyTeam(st.wave)
+    const addOrder = [1, 3, 5, 7, 0, 2, 6, 8]
+    let ai = 0
+    enemies.forEach((e) => {
+      const pos = e.boss
+        ? enemySlotPos(4)
+        : enemySlotPos(addOrder[ai++ % addOrder.length])
+      list.push(makeCombatant(e, 'enemy', pos, st.wave))
     })
     return list
   }, [])
 
-  const combatants = start
   const byId = useMemo(() => {
     const m = new Map<string, Combatant>()
     combatants.forEach((c) => m.set(c.id, c))
     return m
   }, [combatants])
 
-  const [dmgs, setDmgs] = useState<DmgNumber[]>([])
-  const dmgId = useRef(0)
+  const [dmgs, setDmgs] = useState<FloatNum[]>([])
+  const [shocks, setShocks] = useState<Shock[]>([])
+  const idRef = useRef(0)
+
   const spawnDmg = useCallback(
     (pos: [number, number, number], text: string, color: string) => {
-      const id = ++dmgId.current
+      const id = ++idRef.current
       setDmgs((d) => [...d, { id, pos, text, color }])
-      window.setTimeout(
-        () => setDmgs((d) => d.filter((x) => x.id !== id)),
-        750,
-      )
+      window.setTimeout(() => setDmgs((d) => d.filter((x) => x.id !== id)), 750)
     },
     [],
   )
+  const spawnShock = useCallback((p: THREE.Vector3) => {
+    const id = ++idRef.current
+    setShocks((s) => [...s, { id, pos: [p.x, BOARD_Y + 0.05, p.z] }])
+    window.setTimeout(() => setShocks((s) => s.filter((x) => x.id !== id)), 550)
+  }, [])
 
   const timer = useRef(0)
   const resolved = useRef(false)
@@ -179,8 +251,35 @@ export default function CombatSim() {
       c.cooldown -= dt
       if (c.hitT > 0) c.hitT -= dt
 
+      // Boss ground-slam: AoE around the boss hitting nearby opponents
+      if (c.isBoss) {
+        c.slamCd -= dt
+        if (c.slamCd <= 0) {
+          let hitAny = false
+          for (const o of combatants) {
+            if (o.alive && o.team !== c.team && c.pos.distanceTo(o.pos) <= SLAM_RADIUS) {
+              const sd = Math.round(c.dmg * 1.6)
+              o.hp -= sd
+              o.hitT = 0.22
+              tmp.subVectors(o.pos, c.pos).setY(0)
+              if (tmp.lengthSq() > 1e-6) {
+                tmp.normalize()
+                o.pos.addScaledVector(tmp, 0.5)
+              }
+              spawnDmg([o.pos.x, BOARD_Y + 2.2, o.pos.z], String(sd), '#ff2d2d')
+              hitAny = true
+            }
+          }
+          if (hitAny) {
+            sfx.hit()
+            spawnShock(c.pos)
+            useGameStore.setState({ kickAt: performance.now(), kickPower: 0.42 })
+          }
+          c.slamCd = SLAM_COOLDOWN
+        }
+      }
+
       if (c.heal) {
-        // Support: heal the most-wounded ally (any range), no movement
         let best: Combatant | null = null
         let bestRatio = 1
         for (const a of combatants) {
@@ -201,7 +300,6 @@ export default function CombatSim() {
         continue
       }
 
-      // Acquire / validate target = nearest living enemy
       let target = c.targetId ? byId.get(c.targetId) : undefined
       if (!target || !target.alive) {
         let nearest: Combatant | null = null
@@ -228,17 +326,12 @@ export default function CombatSim() {
           if (c.type === 'spearman' && target.maxHp >= 250) dmg = Math.round(dmg * 1.6)
           target.hp -= dmg
           target.hitT = 0.18
-          // knockback
           tmp.subVectors(target.pos, c.pos).setY(0)
           if (tmp.lengthSq() > 1e-6) {
             tmp.normalize()
-            target.pos.addScaledVector(tmp, 0.16)
+            target.pos.addScaledVector(tmp, target.isBoss ? 0.03 : 0.16)
           }
-          spawnDmg(
-            [target.pos.x, BOARD_Y + 2.2, target.pos.z],
-            String(dmg),
-            '#ff5a48',
-          )
+          spawnDmg([target.pos.x, BOARD_Y + 2.2, target.pos.z], String(dmg), '#ff5a48')
           sfx.hit()
           if (dmg >= 60) {
             useGameStore.setState({ kickAt: performance.now(), kickPower: 0.16 })
@@ -255,7 +348,6 @@ export default function CombatSim() {
       }
     }
 
-    // Resolve deaths
     for (const c of combatants) {
       if (c.alive && c.hp <= 0) {
         c.alive = false
@@ -264,15 +356,12 @@ export default function CombatSim() {
       }
     }
 
-    // Visual update
     for (const c of combatants) {
       if (!c.group) continue
       if (c.alive) {
         c.group.position.set(c.pos.x, BOARD_Y, c.pos.z)
         const t = c.targetId ? byId.get(c.targetId) : undefined
-        if (t) {
-          c.group.rotation.y = Math.atan2(t.pos.x - c.pos.x, t.pos.z - c.pos.z)
-        }
+        if (t) c.group.rotation.y = Math.atan2(t.pos.x - c.pos.x, t.pos.z - c.pos.z)
         const squash = c.hitT > 0 ? 1 + (c.hitT / 0.18) * 0.16 : 1
         c.group.scale.setScalar(squash)
       } else if (c.deathT >= 0) {
@@ -284,29 +373,25 @@ export default function CombatSim() {
       if (c.hpFill) {
         const r = Math.max(0, c.hp / c.maxHp)
         c.hpFill.scale.x = r
-        c.hpFill.position.x = -0.45 * (1 - r)
+        c.hpFill.position.x = -((c.isBoss ? 1.6 : 0.9) / 2) * (1 - r)
       }
     }
 
-    // Win / lose detection
     if (resolved.current) return
     const pAlive = combatants.some((c) => c.alive && c.team === 'player')
     const eAlive = combatants.some((c) => c.alive && c.team === 'enemy')
-    const timedOut = timer.current >= MAX_FIGHT_TIME
-    if (!pAlive || !eAlive || timedOut) {
+    if (!pAlive || !eAlive || timer.current >= MAX_FIGHT_TIME) {
       resolved.current = true
       let result: 'win' | 'lose'
       if (!eAlive && pAlive) result = 'win'
       else if (!pAlive && eAlive) result = 'lose'
       else {
-        // timeout / mutual wipe → decide by remaining HP fraction (ties favor enemy)
         const frac = (team: 'player' | 'enemy') =>
           combatants
             .filter((c) => c.team === team)
             .reduce((s, c) => s + Math.max(0, c.hp) / c.maxHp, 0)
         result = frac('player') > frac('enemy') ? 'win' : 'lose'
       }
-      // brief delay so death animations land before the banner
       window.setTimeout(() => useGameStore.getState().finishFight(result), 650)
     }
   })
@@ -315,6 +400,13 @@ export default function CombatSim() {
     <group>
       {combatants.map((c) => (
         <CombatUnit key={c.id} c={c} />
+      ))}
+      {shocks.map((s) => (
+        <ShockRing
+          key={s.id}
+          pos={s.pos}
+          onDone={() => setShocks((x) => x.filter((y) => y.id !== s.id))}
+        />
       ))}
       {dmgs.map((d) => (
         <Html key={d.id} position={d.pos} center style={{ pointerEvents: 'none' }}>

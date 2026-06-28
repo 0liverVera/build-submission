@@ -5,11 +5,11 @@ import Board from './three/Board'
 import CombatSim from './three/CombatSim'
 import Shop from './ui/Shop'
 import { useGameStore } from './game/store'
+import { isBossWave } from './game/enemies'
 
 /**
- * Phase 4 shell: prep phase shows the board + recruit shop + FIGHT button.
- * Pressing FIGHT swaps the board for the auto-battle simulation; on resolution
- * a VICTORY/DEFEAT banner shows and play returns to prep.
+ * Phase 5 shell: prep → fight → (win advances wave / lose costs a life) → on 0
+ * lives, a game-over results screen with restart. Best wave persists locally.
  */
 
 function TopHud() {
@@ -36,9 +36,16 @@ function TopHud() {
 
 function FightDock() {
   const startFight = useGameStore((s) => s.startFight)
+  const wave = useGameStore((s) => s.wave)
+  const boss = isBossWave(wave)
   return (
     <div className="fight-dock">
-      <button className="candy-btn" type="button" onClick={startFight}>
+      {boss && <div className="boss-badge">⚠ BOSS WAVE</div>}
+      <button
+        className={`candy-btn${boss ? ' boss' : ''}`}
+        type="button"
+        onClick={startFight}
+      >
         ⚔ FIGHT
       </button>
     </div>
@@ -64,6 +71,31 @@ function BannerOverlay() {
   )
 }
 
+function GameOverOverlay() {
+  const wave = useGameStore((s) => s.wave)
+  const bestWave = useGameStore((s) => s.bestWave)
+  const restart = useGameStore((s) => s.restart)
+  const isNewBest = wave >= bestWave && wave > 1
+  return (
+    <div className="gameover-overlay">
+      <div className="gameover-card">
+        <div className="go-title">DEFEATED</div>
+        <div className="go-row">
+          <span>You reached</span>
+          <b>Wave {wave}</b>
+        </div>
+        <div className="go-row best">
+          <span>{isNewBest ? '🏆 New Best!' : 'Best'}</span>
+          <b>Wave {bestWave}</b>
+        </div>
+        <button className="candy-btn" type="button" onClick={restart}>
+          ↺ PLAY AGAIN
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function BattleStrip() {
   return <div className="battle-strip">⚔ BATTLE IN PROGRESS</div>
 }
@@ -83,14 +115,17 @@ export default function App() {
         >
           <color attach="background" args={['#caa06a']} />
           <Arena />
-          {phase === 'prep' ? <Board /> : <CombatSim />}
+          {phase === 'prep' && <Board />}
+          {phase === 'fight' && <CombatSim />}
         </Canvas>
 
         {phase === 'prep' && <FightDock />}
         <BannerOverlay />
+        {phase === 'gameover' && <GameOverOverlay />}
       </div>
 
-      {phase === 'prep' ? <Shop /> : <BattleStrip />}
+      {phase === 'prep' && <Shop />}
+      {phase === 'fight' && <BattleStrip />}
     </div>
   )
 }

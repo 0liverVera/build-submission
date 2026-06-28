@@ -280,9 +280,107 @@ body {
   z-index: 9;
   pointer-events: none;
 }
+.fight-dock {
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
 .fight-dock .candy-btn {
   pointer-events: auto;
   min-width: 60%;
+}
+.candy-btn.boss {
+  background: linear-gradient(180deg, #b86bff 0%, #7c3aed 100%);
+  box-shadow: 0 6px 0 #5b21b6, 0 9px 14px rgba(0, 0, 0, 0.3);
+}
+.candy-btn.boss:active {
+  box-shadow: 0 2px 0 #5b21b6, 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+.boss-badge {
+  pointer-events: none;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: #fff;
+  background: linear-gradient(180deg, #e8503a 0%, #a8311f 100%);
+  border: 2px solid #7a2415;
+  border-radius: 12px;
+  padding: 5px 14px;
+  text-shadow: 0 1px 0 var(--text-outline);
+  box-shadow: 0 3px 0 #7a2415;
+  animation: bossPulse 0.9s ease-in-out infinite;
+}
+@keyframes bossPulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.07);
+  }
+}
+
+/* --- Game-over / results screen (Phase 5) --- */
+.gameover-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(26, 16, 10, 0.72);
+  backdrop-filter: blur(3px);
+}
+.gameover-card {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 28px 22px 24px;
+  border-radius: var(--panel-radius);
+  background: linear-gradient(180deg, #fbe7bf 0%, var(--sand-gold) 100%);
+  border: 4px solid var(--arena-brown-dark);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), inset 0 2px 6px rgba(255, 255, 255, 0.5);
+  animation: bannerIn 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) forwards;
+}
+.go-title {
+  font-weight: 700;
+  font-size: 40px;
+  letter-spacing: 2px;
+  color: var(--team-red);
+  -webkit-text-stroke: 2px var(--text-outline);
+  paint-order: stroke fill;
+}
+.go-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--arena-brown-dark);
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.45);
+}
+.go-row b {
+  font-weight: 700;
+  font-size: 20px;
+}
+.go-row.best b {
+  color: var(--gold-deep);
+}
+.gameover-card .candy-btn {
+  margin-top: 6px;
+  width: 100%;
+  background: linear-gradient(180deg, #56c06a 0%, #2f9e4f 100%);
+  box-shadow: 0 6px 0 #1f7a3a, 0 9px 14px rgba(0, 0, 0, 0.3);
+}
+.gameover-card .candy-btn:active {
+  box-shadow: 0 2px 0 #1f7a3a, 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 /* --- Floating combat damage / heal numbers (Phase 4) --- */

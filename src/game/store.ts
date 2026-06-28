@@ -19,20 +19,57 @@ const INCOME_BASE = 5
 const WIN_BONUS = 1
 const SHOP_SIZE = 4
 const MAX_INTEREST = 5
+const START_LIVES = 3
 
 const randType = () => UNIT_TYPES[Math.floor(Math.random() * UNIT_TYPES.length)]
 const rollShopArr = (): UnitType[] =>
   Array.from({ length: SHOP_SIZE }, randType)
-/** Interest: +1 coin per 10 saved, capped. Rewards banking gold. */
 const interestFor = (coins: number) =>
   Math.min(Math.floor(coins / 10), MAX_INTEREST)
+
+// --- Best-wave persistence (localStorage; offline-safe) ---
+const BEST_KEY = 'cc_bestWave'
+function loadBest(): number {
+  try {
+    return parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0
+  } catch {
+    return 0
+  }
+}
+function saveBest(v: number) {
+  try {
+    localStorage.setItem(BEST_KEY, String(v))
+  } catch {
+    /* ignore (private mode / SSR) */
+  }
+}
+
+/** Fresh-run state (everything that resets on restart; best wave persists). */
+function initialRun() {
+  const board = Array<UnitInstance | null>(9).fill(null)
+  board[6] = mk('brute')
+  board[7] = mk('brute')
+  return {
+    board,
+    bench: [null, null, null] as (UnitInstance | null)[],
+    shop: rollShopArr() as (UnitType | null)[],
+    coins: START_COINS,
+    lives: START_LIVES,
+    wave: 1,
+    phase: 'prep' as Phase,
+    banner: null as FightResult | null,
+    bursts: [] as Burst[],
+    kickAt: 0,
+    kickPower: 0,
+  }
+}
 
 interface Burst {
   id: string
   pos: [number, number, number]
 }
 
-export type Phase = 'prep' | 'fight'
+export type Phase = 'prep' | 'fight' | 'gameover'
 export type FightResult = 'win' | 'lose'
 
 interface GameState {
@@ -42,14 +79,12 @@ interface GameState {
   coins: number
   lives: number
   wave: number
+  bestWave: number
   phase: Phase
-  /** Last fight outcome, shown as a banner; null when cleared. */
   banner: FightResult | null
   bursts: Burst[]
-  /** Screen-shake trigger: timestamp + strength, read by the camera rig. */
   kickAt: number
   kickPower: number
-
   rerollCost: number
 
   moveUnit: (from: SlotRef, to: SlotRef) => void
@@ -58,34 +93,18 @@ interface GameState {
   startFight: () => void
   finishFight: (result: FightResult) => void
   clearBanner: () => void
+  restart: () => void
   removeBurst: (id: string) => void
   triggerShake: (power: number) => void
 }
 
 const sameSlot = (a: SlotRef, b: SlotRef) =>
   a.area === b.area && a.index === b.index
-
 const firstEmpty = (arr: (UnitInstance | null)[]) => arr.findIndex((x) => !x)
 
 export const useGameStore = create<GameState>((set, get) => ({
-  // Two Brutes seeded on the front row so a merge can be tried immediately,
-  // with the bench left open so the shop can be tested too.
-  board: (() => {
-    const b = Array<UnitInstance | null>(9).fill(null)
-    b[6] = mk('brute')
-    b[7] = mk('brute')
-    return b
-  })(),
-  bench: [null, null, null],
-  shop: rollShopArr(),
-  coins: START_COINS,
-  lives: 3,
-  wave: 1,
-  phase: 'prep',
-  banner: null,
-  bursts: [],
-  kickAt: 0,
-  kickPower: 0,
+  ...initialRun(),
+  bestWave: loadBest(),
   rerollCost: REROLL_COST,
 
   moveUnit: (from, to) => {
@@ -113,7 +132,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
 
     if (dst.type === src.type && dst.level === src.level && dst.level < 3) {
-      // MERGE → next level, with juice (burst + screen shake + sound)
       write(to, { id: nid(), type: dst.type, level: (dst.level + 1) as Level })
       write(from, null)
       const [bx, , bz] = slotPos(to)
@@ -128,7 +146,6 @@ export const useGameStore = create<GameState>((set, get) => ({
       return
     }
 
-    // Occupied by a different unit → swap
     write(to, src)
     write(from, dst)
     set({ board, bench })
@@ -147,7 +164,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const bench = [...s.bench]
     const bi = firstEmpty(bench)
     if (bi < 0) {
-      // Bench full — no room to recruit
       sfx.deny()
       return
     }
@@ -172,11 +188,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     const s = get()
     if (s.phase !== 'prep') return
     if (!s.board.some(Boolean)) {
-      // Need at least one unit on the board to fight
       sfx.deny()
       return
     }
-    // zoom-punch feel when the battle kicks off
     set({ phase: 'fight', banner: null, kickAt: performance.now(), kickPower: 0.22 })
     sfx.fight()
   },
@@ -185,20 +199,34 @@ export const useGameStore = create<GameState>((set, get) => ({
     const s = get()
     if (s.phase !== 'fight') return
     let { coins, lives, wave } = s
+
     if (result === 'win') {
-      // Income: base + win bonus + interest, then advance the wave
       coins += INCOME_BASE + WIN_BONUS + interestFor(coins)
       wave += 1
-    } else {
-      coins += INCOME_BASE
-      lives = Math.max(0, lives - 1)
+      const best = Math.max(s.bestWave, wave)
+      saveBest(best)
+      set({ phase: 'prep', banner: 'win', coins, wave, bestWave: best, shop: rollShopArr() })
+      sfx.win()
+      return
     }
-    set({ phase: 'prep', banner: result, coins, lives, wave, shop: rollShopArr() })
-    if (result === 'win') sfx.win()
-    else sfx.lose()
+
+    // loss
+    coins += INCOME_BASE
+    lives = Math.max(0, lives - 1)
+    if (lives <= 0) {
+      const best = Math.max(s.bestWave, wave)
+      saveBest(best)
+      set({ phase: 'gameover', lives: 0, coins, banner: null, bestWave: best })
+      sfx.lose()
+      return
+    }
+    set({ phase: 'prep', banner: 'lose', coins, lives, shop: rollShopArr() })
+    sfx.lose()
   },
 
   clearBanner: () => set({ banner: null }),
+
+  restart: () => set({ ...initialRun() }),
 
   removeBurst: (id) =>
     set((s) => ({ bursts: s.bursts.filter((b) => b.id !== id) })),
