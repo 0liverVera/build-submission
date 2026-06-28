@@ -32,23 +32,20 @@ export default function Hub() {
             Coach {f.coachName} · Season {f.season}
           </div>
         </div>
-        <button className="hub-menu" onClick={() => go('menu')} aria-label="Menu">
-          ≡
-        </button>
-      </header>
-
-      <div className="hub-stats">
-        <div className="stat">
+        <div className="hub-stat">
           <span className="k">RECORD</span>
           <span className="v">
             {f.wins}-{f.losses}
           </span>
         </div>
-        <div className="stat">
+        <div className="hub-stat">
           <span className="k">CREDITS</span>
           <span className="v gold">🪙 {f.credits}</span>
         </div>
-      </div>
+        <button className="hub-menu" onClick={() => go('menu')} aria-label="Menu">
+          ≡
+        </button>
+      </header>
 
       <div className="hub-nav">
         <button className="nav-card play" onClick={() => go('game')}>

@@ -4,12 +4,14 @@ import NewFranchise from './screens/NewFranchise'
 import Hub from './screens/Hub'
 import Placeholder from './screens/Placeholder'
 import CourtGame from './court/CourtGame'
+import RotateGate from './ui/RotateGate'
 
 export default function App() {
   const screen = useGame((s) => s.screen)
 
   return (
     <div className="stage">
+      <RotateGate />
       {screen === 'menu' && <MainMenu />}
       {screen === 'newFranchise' && <NewFranchise />}
       {screen === 'hub' && <Hub />}

@@ -35,79 +35,81 @@ export default function NewFranchise() {
       </header>
 
       <div className="form-body">
-        <div className="crest-preview" style={crestVars}>
-          <div className="crest">
-            <span>{crestLetter}</span>
+        <div className="form-col left">
+          <div className="crest-preview" style={crestVars}>
+            <div className="crest">
+              <span>{crestLetter}</span>
+            </div>
+            <div className="crest-name">
+              {(city.trim() || 'Riverside') + ' ' + (team.trim() || 'Hoops')}
+            </div>
           </div>
-          <div className="crest-name">
-            {(city.trim() || 'Riverside') + ' ' + (team.trim() || 'Hoops')}
-          </div>
-        </div>
-
-        <label className="field">
-          <span>Coach Name</span>
-          <input
-            value={coach}
-            onChange={(e) => setCoach(e.target.value)}
-            maxLength={16}
-            placeholder="Coach"
-          />
-        </label>
-        <label className="field">
-          <span>City</span>
-          <input
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            maxLength={16}
-            placeholder="Riverside"
-          />
-        </label>
-        <label className="field">
-          <span>Team Name</span>
-          <input
-            value={team}
-            onChange={(e) => setTeam(e.target.value)}
-            maxLength={16}
-            placeholder="Hoops"
-          />
-        </label>
-
-        <div className="field">
-          <span>Team Colors</span>
-          <div className="theme-row">
-            {THEMES.map((th, i) => (
-              <button
-                key={i}
-                type="button"
-                className={`swatch${i === theme ? ' on' : ''}`}
-                style={{ background: th.p }}
-                onClick={() => {
-                  sfx.tap()
-                  setTheme(i)
-                }}
-                aria-label={`Theme ${i + 1}`}
-              />
-            ))}
+          <div className="field">
+            <span>Team Colors</span>
+            <div className="theme-row">
+              {THEMES.map((th, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className={`swatch${i === theme ? ' on' : ''}`}
+                  style={{ background: th.p }}
+                  onClick={() => {
+                    sfx.tap()
+                    setTheme(i)
+                  }}
+                  aria-label={`Theme ${i + 1}`}
+                />
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="form-foot">
-        <Button
-          variant="primary"
-          onClick={() => {
-            sfx.confirm()
-            start({
-              coachName: coach,
-              city,
-              teamName: team,
-              colorPrimary: t.p,
-              colorSecondary: t.s,
-            })
-          }}
-        >
-          CREATE TEAM ▶
-        </Button>
+        <div className="form-col right">
+          <label className="field">
+            <span>Coach Name</span>
+            <input
+              value={coach}
+              onChange={(e) => setCoach(e.target.value)}
+              maxLength={16}
+              placeholder="Coach"
+            />
+          </label>
+          <label className="field">
+            <span>City</span>
+            <input
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              maxLength={16}
+              placeholder="Riverside"
+            />
+          </label>
+          <label className="field">
+            <span>Team Name</span>
+            <input
+              value={team}
+              onChange={(e) => setTeam(e.target.value)}
+              maxLength={16}
+              placeholder="Hoops"
+            />
+          </label>
+          <div className="form-foot">
+            <Button
+              variant="primary"
+              onClick={() => {
+                sfx.confirm()
+                start({
+                  coachName: coach,
+                  city,
+                  teamName: team,
+                  colorPrimary: t.p,
+                  colorSecondary: t.s,
+                })
+              }}
+            >
+              CREATE TEAM ▶
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   )

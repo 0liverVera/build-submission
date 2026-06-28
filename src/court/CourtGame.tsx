@@ -3,12 +3,13 @@ import { useGame } from '../state/store'
 import { sfx } from '../audio/sfx'
 
 /**
- * PHASE 2 — the core offensive possession (the make-or-break of the game).
- * A self-contained canvas sandbox: get the ball, read the defense, and
- *   • drag BACK from the ball handler + release to shoot (real arc + preview)
- *   • tap an open teammate to pass (defense reacts, opening windows)
- *   • swipe UP toward the rim to drive for a layup/dunk (a defender can block)
- * A 14s shot clock forces decisions. Make it FUN before anything else.
+ * PHASE 2 — the core offensive possession (LANDSCAPE, top-down-ish half court).
+ * Hoop is on the RIGHT; the action reads left → right toward it.
+ *   • drag BACK (away from the hoop) + release to shoot — aim the landing spot,
+ *     power = drag length; a live target ring turns green when it's on the rim
+ *   • tap an open teammate to pass (defenders close out with a lag → open windows)
+ *   • swipe toward the hoop (RIGHT) to drive for a layup/dunk (a defender can block)
+ * 14s shot clock forces decisions. Make it FUN before anything else.
  */
 
 type PosName = 'PG' | 'SG' | 'SF' | 'PF' | 'C'
@@ -31,12 +32,13 @@ interface Defender {
   ty: number
 }
 
+// Attacking the hoop on the right; spread across the left ~70% of the floor.
 const FORMATION: { pos: PosName; rx: number; ry: number }[] = [
-  { pos: 'PG', rx: 0.5, ry: 0.78 },
-  { pos: 'SG', rx: 0.18, ry: 0.64 },
-  { pos: 'SF', rx: 0.82, ry: 0.64 },
-  { pos: 'PF', rx: 0.34, ry: 0.48 },
-  { pos: 'C', rx: 0.66, ry: 0.46 },
+  { pos: 'PG', rx: 0.18, ry: 0.5 },
+  { pos: 'SG', rx: 0.4, ry: 0.24 },
+  { pos: 'SF', rx: 0.4, ry: 0.76 },
+  { pos: 'PF', rx: 0.58, ry: 0.38 },
+  { pos: 'C', rx: 0.62, ry: 0.64 },
 ]
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
@@ -79,13 +81,14 @@ export default function CourtGame() {
     let rimX = 0
     let rimY = 0
     let arcR = 0
-    let pr = 14 // player radius
-    let ballR = 9
-    let floorY = 0
+    let pr = 18
+    let ballR = 10
     let maxDrag = 200
-    let GRAV = 1200
+    let TOL = 34
 
-    // --- mutable game state ---
+    const dist = (ax: number, ay: number, bx: number, by: number) =>
+      Math.hypot(ax - bx, ay - by)
+
     const players: OPlayer[] = FORMATION.map((f, i) => ({
       id: i,
       pos: f.pos,
@@ -102,7 +105,19 @@ export default function CourtGame() {
       tx: 0,
       ty: 0,
     }))
-    const ball = { x: 0, y: 0, vx: 0, vy: 0, held: 0 as number | null, flight: false }
+    const ball = {
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      z: 0,
+      t: 0,
+      dur: 0.7,
+      peak: 60,
+      held: 0 as number | null,
+      flight: false,
+      three: false,
+    }
 
     let phase: Phase = 'live'
     let handler = 0
@@ -112,11 +127,8 @@ export default function CourtGame() {
     let shake = 0
     let netFlash = 0
     let contested = false
-    let shotOrigin = { x: 0, y: 0 }
-    let result: 'make' | 'miss' | null = null
     let dribbleT = 0
 
-    // pass / drive animation
     let passFrom = 0
     let passTo = 0
     let passT = 0
@@ -125,21 +137,14 @@ export default function CourtGame() {
     let driveTarget = { x: 0, y: 0 }
     let driveT = 0
 
-    // session stats
     let points = 0
     let made = 0
     let att = 0
 
-    // input
     let aiming = false
     const down = { x: 0, y: 0 }
     const cur = { x: 0, y: 0 }
     let tapCandidate: number | null = null
-    let hintUntil = 6 // seconds of showing the coaching hint
-    let elapsed = 0
-
-    const dist = (ax: number, ay: number, bx: number, by: number) =>
-      Math.hypot(ax - bx, ay - by)
 
     function layout() {
       const rect = canvas!.getBoundingClientRect()
@@ -148,14 +153,13 @@ export default function CourtGame() {
       canvas!.width = Math.floor(W * dpr)
       canvas!.height = Math.floor(H * dpr)
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0)
-      rimX = W * 0.5
-      rimY = H * 0.135
-      arcR = Math.min(W * 0.46, H * 0.4)
-      pr = Math.max(12, W * 0.036)
-      ballR = pr * 0.62
-      floorY = H * 0.9
-      maxDrag = Math.min(W, H) * 0.5
-      GRAV = H * 1.85
+      rimX = W * 0.9
+      rimY = H * 0.5
+      arcR = Math.min(W * 0.52, H * 0.94)
+      pr = Math.max(12, H * 0.062)
+      ballR = pr * 0.55
+      maxDrag = Math.min(W, H) * 0.55
+      TOL = pr * 1.95
       for (const p of players) {
         p.x = p.rx * W
         p.y = p.ry * H
@@ -166,7 +170,7 @@ export default function CourtGame() {
     function setDefenderTargets(handlerId: number, snap = false) {
       for (const d of defenders) {
         const p = players[d.guard]
-        const tight = d.guard === handlerId ? 0.14 : 0.36
+        const tight = d.guard === handlerId ? 0.16 : 0.4
         d.tx = p.x + (rimX - p.x) * tight + (Math.random() * 2 - 1) * 5
         d.ty = p.y + (rimY - p.y) * tight + (Math.random() * 2 - 1) * 5
         if (snap) {
@@ -190,69 +194,70 @@ export default function CourtGame() {
       handler = 0
       ball.held = handler
       ball.flight = false
+      ball.z = 0
       phase = 'live'
       shotClock = 14
-      result = null
       contested = false
       setDefenderTargets(handler, true)
     }
 
-    function setMsg(msg: string, kind: string) {
-      pushHud(msg, kind)
-    }
-
     function shootFromHandler(dir: { x: number; y: number }, power: number) {
       const p = players[handler]
-      shotOrigin = { x: p.x, y: p.y - pr * 0.5 }
-      const d = dist(p.x, p.y, rimX, rimY)
-      contested = nearestDefenderTo(p.x, p.y) < pr * 3.4
-      const speed = lerp(H * 0.95, H * 2.3, power)
+      const range = lerp(W * 0.22, W * 1.0, power)
+      ball.dur = lerp(0.55, 0.95, power)
+      ball.peak = clamp(range * 0.26, H * 0.12, H * 0.42)
       ball.held = null
       ball.flight = true
-      ball.x = shotOrigin.x
-      ball.y = shotOrigin.y
-      ball.vx = dir.x * speed
-      ball.vy = dir.y * speed
-      result = null
+      ball.x = p.x
+      ball.y = p.y
+      ball.z = 0
+      ball.t = 0
+      ball.vx = (dir.x * range) / ball.dur
+      ball.vy = (dir.y * range) / ball.dur
+      ball.three = dist(p.x, p.y, rimX, rimY) > arcR
+      contested = nearestDefenderTo(p.x, p.y) < pr * 3.2
       phase = 'shooting'
       att++
       sfx.shoot()
-      // remember whether this was a 3
-      ;(ball as unknown as { three: boolean }).three = d > arcR
     }
 
-    function resolveShot(kind: 'swish' | 'make' | 'rattleIn' | 'miss') {
-      const three = (ball as unknown as { three: boolean }).three
+    function resolveShot() {
+      const d = dist(ball.x, ball.y, rimX, rimY)
+      const tol = TOL * (contested ? 0.62 : 1)
+      let kind: 'swish' | 'make' | 'rattleIn' | 'miss'
+      if (d < tol * 0.42) kind = 'swish'
+      else if (d < tol) kind = 'make'
+      else if (d < tol * 1.7) kind = Math.random() < 0.45 ? 'rattleIn' : 'miss'
+      else kind = 'miss'
+
       if (kind === 'miss') {
-        result = 'miss'
         setMsg('MISS', 'miss')
         sfx.rim()
-        ball.vy = -Math.abs(ball.vy) * 0.4
-        ball.vx += (ball.x < rimX ? -1 : 1) * H * 0.12
         shake = Math.max(shake, 2)
       } else {
-        result = 'make'
-        const pts = three ? 3 : 2
+        const pts = ball.three ? 3 : 2
         points += pts
         made++
         netFlash = 0.45
-        if (three) {
+        ball.x = rimX
+        ball.y = rimY
+        ball.z = 0
+        if (ball.three) {
           setMsg(kind === 'swish' ? 'SWISH · 3!' : 'BANG · 3!', 'three')
           sfx.three()
           shake = Math.max(shake, 9)
         } else {
-          setMsg(kind === 'swish' ? 'SWISH!' : kind === 'rattleIn' ? 'IN & OUT… IN!' : 'BUCKET!', 'make')
+          setMsg(
+            kind === 'swish' ? 'SWISH!' : kind === 'rattleIn' ? 'IN & OUT… IN!' : 'BUCKET!',
+            'make',
+          )
           sfx.make()
           if (kind === 'swish') sfx.swish()
           shake = Math.max(shake, 4)
         }
-        // drop the ball through the rim
-        ball.x = rimX
-        ball.vx = 0
-        ball.vy = Math.abs(ball.vy) * 0.4 + H * 0.35
       }
       phase = 'resolved'
-      resolveAt = now + 1.15
+      resolveAt = now + 1.1
     }
 
     function startPass(targetId: number) {
@@ -264,13 +269,14 @@ export default function CourtGame() {
       passDur = clamp(dist(a.x, a.y, b.x, b.y) / (W * 3), 0.16, 0.4)
       ball.held = null
       ball.flight = false
+      ball.z = 0
       phase = 'passing'
       sfx.pass()
     }
 
     function startDrive() {
       driveFrom = { x: players[handler].x, y: players[handler].y }
-      driveTarget = { x: rimX, y: rimY + pr * 1.7 }
+      driveTarget = { x: rimX - pr * 2, y: rimY }
       driveT = 0
       phase = 'driving'
       sfx.dribble()
@@ -278,7 +284,7 @@ export default function CourtGame() {
 
     function resolveDrive() {
       att++
-      const guarded = nearestDefenderTo(rimX, rimY + pr * 1.6) < pr * 2.6
+      const guarded = nearestDefenderTo(rimX - pr, rimY) < pr * 2.6
       if (guarded && Math.random() < 0.5) {
         setMsg('STUFFED!', 'miss')
         sfx.block()
@@ -299,22 +305,19 @@ export default function CourtGame() {
         shake = Math.max(shake, 10)
       }
       phase = 'resolved'
-      resolveAt = now + 1.15
+      resolveAt = now + 1.1
     }
 
     function turnover(msg: string) {
       setMsg(msg, 'miss')
       sfx.buzzer()
       phase = 'resolved'
-      resolveAt = now + 1.1
+      resolveAt = now + 1.0
       ball.held = null
       ball.flight = false
     }
 
-    // --- per-frame update ---
     function update(dt: number) {
-      elapsed += dt
-      // defenders slide toward targets (delay creates open windows)
       for (const d of defenders) {
         const k = Math.min(1, 6 * dt)
         d.x = lerp(d.x, d.tx, k)
@@ -336,12 +339,14 @@ export default function CourtGame() {
         const b = players[passTo]
         const t = clamp(passT, 0, 1)
         ball.x = lerp(a.x, b.x, t)
-        ball.y = lerp(a.y, b.y, t) - pr * 0.5
+        ball.y = lerp(a.y, b.y, t)
+        ball.z = Math.sin(Math.PI * t) * pr * 0.6
         if (passT >= 1) {
           handler = passTo
           ball.held = handler
+          ball.z = 0
           phase = 'live'
-          setDefenderTargets(handler) // closeout lags → brief open look
+          setDefenderTargets(handler)
         }
       } else if (phase === 'driving') {
         driveT += dt / 0.5
@@ -350,28 +355,15 @@ export default function CourtGame() {
         players[handler].y = lerp(driveFrom.y, driveTarget.y, t)
         ball.held = handler
         if (driveT >= 1) resolveDrive()
-      } else if (phase === 'shooting' || phase === 'resolved') {
-        if (ball.flight) {
-          const prevY = ball.y
-          ball.vy += GRAV * dt
+      } else if (phase === 'shooting') {
+        ball.t += dt
+        const ft = ball.t / ball.dur
+        if (ft >= 1) {
+          resolveShot()
+        } else {
           ball.x += ball.vx * dt
           ball.y += ball.vy * dt
-          if (phase === 'shooting' && result === null && ball.vy > 0 && ball.y >= rimY && prevY < rimY) {
-            const dx = Math.abs(ball.x - rimX)
-            const tol = (W * 0.072) * (contested ? 0.62 : 1)
-            if (dx < tol * 0.45) resolveShot('swish')
-            else if (dx < tol) resolveShot('make')
-            else if (dx < tol * 1.7) resolveShot(Math.random() < 0.45 ? 'rattleIn' : 'miss')
-            else resolveShot('miss')
-          }
-          if (phase === 'shooting' && result === null && ball.y > floorY) {
-            resolveShot('miss')
-          }
-          if (ball.y > floorY) {
-            ball.y = floorY
-            ball.vy *= -0.42
-            ball.vx *= 0.6
-          }
+          ball.z = ball.peak * Math.sin(Math.PI * ft)
         }
       }
 
@@ -381,7 +373,6 @@ export default function CourtGame() {
       }
     }
 
-    // --- HUD throttling ---
     let lastHud: Hud = { points: -1, made: -1, att: -1, clock: -1, msg: '?', msgKind: '' }
     function pushHud(msg = lastHud.msg, kind = lastHud.msgKind) {
       const clk = Math.ceil(shotClock)
@@ -397,113 +388,119 @@ export default function CourtGame() {
         setHud({ points, made, att, clock: clk, msg, msgKind: kind })
       }
     }
+    function setMsg(msg: string, kind: string) {
+      pushHud(msg, kind)
+    }
 
     // --- drawing ---
     function drawCourt() {
-      // floor
       ctx!.fillStyle = '#c98a4a'
       ctx!.fillRect(0, 0, W, H)
-      ctx!.fillStyle = 'rgba(0,0,0,0.06)'
-      for (let i = 0; i < H; i += 22) ctx!.fillRect(0, i, W, 1)
-      // crowd band
+      ctx!.fillStyle = 'rgba(0,0,0,0.05)'
+      for (let i = 0; i < W; i += 26) ctx!.fillRect(i, 0, 1, H)
+      // crowd bands top & bottom
+      const band = H * 0.07
       ctx!.fillStyle = '#1a1f33'
-      ctx!.fillRect(0, 0, W, rimY - pr * 1.5)
-      for (let i = 0; i < 40; i++) {
+      ctx!.fillRect(0, 0, W, band)
+      ctx!.fillRect(0, H - band, W, band)
+      for (let i = 0; i < 60; i++) {
         ctx!.fillStyle = ['#3a4170', '#4a3a6a', '#5a4a3a', '#3a5a4a'][i % 4]
-        const cx = ((i * 53) % W) + 6
-        const cy = ((i * 31) % (rimY - pr * 2)) + 4
+        const cx = (i * 41) % W
+        const top = i % 2 === 0
         ctx!.beginPath()
-        ctx!.arc(cx, cy, 4, 0, Math.PI * 2)
+        ctx!.arc(cx + 6, top ? band * 0.5 : H - band * 0.5, 3.5, 0, Math.PI * 2)
         ctx!.fill()
       }
-      // lane
-      const laneW = W * 0.32
-      ctx!.fillStyle = 'rgba(255,255,255,0.08)'
-      ctx!.fillRect(rimX - laneW / 2, rimY, laneW, H * 0.34)
       ctx!.strokeStyle = 'rgba(255,255,255,0.5)'
       ctx!.lineWidth = 2.5
-      ctx!.strokeRect(rimX - laneW / 2, rimY, laneW, H * 0.34)
-      // 3pt arc
+      // lane (key) on the right
+      const laneH = H * 0.42
+      const laneW = W * 0.18
+      ctx!.fillStyle = 'rgba(255,255,255,0.08)'
+      ctx!.fillRect(rimX - laneW, rimY - laneH / 2, laneW + W * 0.1, laneH)
+      ctx!.strokeRect(rimX - laneW, rimY - laneH / 2, laneW + W * 0.1, laneH)
+      // 3pt arc opening left
       ctx!.beginPath()
-      ctx!.arc(rimX, rimY, arcR, 0.16 * Math.PI, 0.84 * Math.PI)
+      ctx!.arc(rimX, rimY, arcR, 0.62 * Math.PI, 1.38 * Math.PI)
       ctx!.stroke()
-      // baseline
+      // sideline at right (baseline)
       ctx!.beginPath()
-      ctx!.moveTo(0, rimY)
-      ctx!.lineTo(W, rimY)
+      ctx!.moveTo(rimX + W * 0.02, band)
+      ctx!.lineTo(rimX + W * 0.02, H - band)
       ctx!.stroke()
     }
 
     function drawHoop() {
-      // backboard
+      // backboard (vertical, right of rim)
       ctx!.fillStyle = '#eef1f6'
-      ctx!.fillRect(rimX - W * 0.11, rimY - pr * 1.5, W * 0.22, 6)
+      ctx!.fillRect(rimX + pr * 1.4, rimY - H * 0.11, 6, H * 0.22)
       ctx!.strokeStyle = '#cf3a2a'
       ctx!.lineWidth = 3
-      ctx!.strokeRect(rimX - W * 0.05, rimY - pr * 1.5, W * 0.1, pr * 0.9)
-      // rim
+      ctx!.strokeRect(rimX + pr * 1.4, rimY - pr * 0.7, 5, pr * 1.4)
+      // rim (top-down ellipse)
       ctx!.strokeStyle = '#ff6a2a'
       ctx!.lineWidth = 4
       ctx!.beginPath()
-      ctx!.ellipse(rimX, rimY, W * 0.07, 5, 0, 0, Math.PI * 2)
+      ctx!.ellipse(rimX, rimY, pr * 0.5, pr * 0.8, 0, 0, Math.PI * 2)
       ctx!.stroke()
-      // net
-      ctx!.strokeStyle = netFlash > 0 ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.6)'
-      ctx!.lineWidth = 1.5
-      const netW = W * 0.07
-      for (let i = -3; i <= 3; i++) {
+      // net hint
+      ctx!.strokeStyle = netFlash > 0 ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)'
+      ctx!.lineWidth = 1.4
+      for (let i = -2; i <= 2; i++) {
         ctx!.beginPath()
-        ctx!.moveTo(rimX + (i / 3) * netW, rimY + 3)
-        ctx!.lineTo(rimX + (i / 6) * netW, rimY + pr * 1.5)
+        ctx!.moveTo(rimX, rimY + (i / 2) * pr * 0.7)
+        ctx!.lineTo(rimX - pr * 0.7, rimY + (i / 4) * pr * 0.7)
         ctx!.stroke()
       }
     }
 
-    function drawPlayer(x: number, y: number, color: string, opts: { ring?: string; ball?: boolean }) {
-      // shadow
+    function drawPlayer(x: number, y: number, color: string, ring?: string) {
       ctx!.fillStyle = 'rgba(0,0,0,0.22)'
       ctx!.beginPath()
-      ctx!.ellipse(x, y + pr * 0.9, pr * 0.9, pr * 0.4, 0, 0, Math.PI * 2)
+      ctx!.ellipse(x, y + pr * 0.85, pr * 0.85, pr * 0.38, 0, 0, Math.PI * 2)
       ctx!.fill()
-      if (opts.ring) {
-        ctx!.strokeStyle = opts.ring
+      if (ring) {
+        ctx!.strokeStyle = ring
         ctx!.lineWidth = 3
         ctx!.beginPath()
-        ctx!.ellipse(x, y + pr * 0.9, pr * 1.25, pr * 0.55, 0, 0, Math.PI * 2)
+        ctx!.ellipse(x, y + pr * 0.85, pr * 1.2, pr * 0.5, 0, 0, Math.PI * 2)
         ctx!.stroke()
       }
-      // body
       ctx!.fillStyle = color
       ctx!.beginPath()
-      ctx!.moveTo(x - pr * 0.7, y + pr * 0.8)
-      ctx!.lineTo(x - pr * 0.55, y - pr * 0.2)
-      ctx!.quadraticCurveTo(x, y - pr * 0.7, x + pr * 0.55, y - pr * 0.2)
-      ctx!.lineTo(x + pr * 0.7, y + pr * 0.8)
+      ctx!.moveTo(x - pr * 0.65, y + pr * 0.75)
+      ctx!.lineTo(x - pr * 0.5, y - pr * 0.2)
+      ctx!.quadraticCurveTo(x, y - pr * 0.65, x + pr * 0.5, y - pr * 0.2)
+      ctx!.lineTo(x + pr * 0.65, y + pr * 0.75)
       ctx!.closePath()
       ctx!.fill()
-      // head
       ctx!.fillStyle = '#e8b88f'
       ctx!.beginPath()
-      ctx!.arc(x, y - pr * 0.7, pr * 0.45, 0, Math.PI * 2)
+      ctx!.arc(x, y - pr * 0.65, pr * 0.42, 0, Math.PI * 2)
       ctx!.fill()
-      ctx!.strokeStyle = 'rgba(0,0,0,0.25)'
-      ctx!.lineWidth = 1.5
+      ctx!.strokeStyle = 'rgba(0,0,0,0.22)'
+      ctx!.lineWidth = 1.4
       ctx!.stroke()
     }
 
-    function drawBall(x: number, y: number) {
+    function drawBall(x: number, y: number, z: number) {
+      if (z > 1) {
+        ctx!.fillStyle = 'rgba(0,0,0,0.2)'
+        ctx!.beginPath()
+        ctx!.ellipse(x, y, ballR * 0.8, ballR * 0.4, 0, 0, Math.PI * 2)
+        ctx!.fill()
+      }
+      const by = y - z
       ctx!.fillStyle = '#ff8a3d'
       ctx!.beginPath()
-      ctx!.arc(x, y, ballR, 0, Math.PI * 2)
+      ctx!.arc(x, by, ballR, 0, Math.PI * 2)
       ctx!.fill()
       ctx!.strokeStyle = 'rgba(80,30,0,0.7)'
       ctx!.lineWidth = 1.2
       ctx!.beginPath()
-      ctx!.arc(x, y, ballR, 0, Math.PI * 2)
-      ctx!.moveTo(x - ballR, y)
-      ctx!.lineTo(x + ballR, y)
-      ctx!.moveTo(x, y - ballR)
-      ctx!.lineTo(x, y + ballR)
+      ctx!.arc(x, by, ballR, 0, Math.PI * 2)
+      ctx!.moveTo(x - ballR, by)
+      ctx!.lineTo(x + ballR, by)
       ctx!.stroke()
     }
 
@@ -514,44 +511,39 @@ export default function CourtGame() {
       const len = Math.hypot(dragX, dragY)
       if (len < 16) return
       const p = players[handler]
-      if (dragY < -22 && len > 24) {
-        // drive arrow toward rim
+      if (dragX > 22 && Math.abs(dragX) > Math.abs(dragY) * 0.8) {
         ctx!.strokeStyle = 'rgba(45,212,191,0.9)'
         ctx!.lineWidth = 4
         ctx!.setLineDash([10, 8])
         ctx!.beginPath()
-        ctx!.moveTo(p.x, p.y - pr)
-        ctx!.lineTo(rimX, rimY + pr)
+        ctx!.moveTo(p.x, p.y)
+        ctx!.lineTo(rimX - pr, rimY)
         ctx!.stroke()
         ctx!.setLineDash([])
         return
       }
-      // shot trajectory preview (same physics as the real shot)
       const power = clamp(len / maxDrag, 0.12, 1)
       const dir = { x: -dragX / len, y: -dragY / len }
-      const speed = lerp(H * 0.95, H * 2.3, power)
-      let sx = p.x
-      let sy = p.y - pr * 0.5
-      let vx = dir.x * speed
-      let vy = dir.y * speed
-      ctx!.fillStyle = 'rgba(255,255,255,0.85)'
-      for (let i = 0; i < 26; i++) {
-        const t = 0.035
-        vy += GRAV * t
-        sx += vx * t
-        sy += vy * t
-        if (sy > H || sx < 0 || sx > W) break
-        if (i % 2 === 0) {
-          ctx!.beginPath()
-          ctx!.arc(sx, sy, 3, 0, Math.PI * 2)
-          ctx!.fill()
-        }
-      }
-      // power pip
+      const range = lerp(W * 0.22, W * 1.0, power)
+      const lx = p.x + dir.x * range
+      const ly = p.y + dir.y * range
+      const tol = TOL * (nearestDefenderTo(p.x, p.y) < pr * 3.2 ? 0.62 : 1)
+      const inRim = dist(lx, ly, rimX, rimY) < tol
+      ctx!.strokeStyle = inRim ? 'rgba(90,230,140,0.95)' : 'rgba(255,255,255,0.8)'
+      ctx!.lineWidth = 3
+      ctx!.setLineDash([6, 7])
+      ctx!.beginPath()
+      ctx!.moveTo(p.x, p.y)
+      ctx!.lineTo(lx, ly)
+      ctx!.stroke()
+      ctx!.setLineDash([])
+      ctx!.beginPath()
+      ctx!.arc(lx, ly, tol, 0, Math.PI * 2)
+      ctx!.stroke()
       ctx!.fillStyle = '#ffcf4a'
       ctx!.font = 'bold 12px system-ui'
       ctx!.textAlign = 'center'
-      ctx!.fillText(`${Math.round(power * 100)}%`, p.x, p.y + pr * 2.1)
+      ctx!.fillText(`${Math.round(power * 100)}%`, p.x, p.y - pr * 1.4)
     }
 
     function render() {
@@ -561,33 +553,26 @@ export default function CourtGame() {
       }
       drawCourt()
       drawHoop()
-      // defenders
-      for (const d of defenders) drawPlayer(d.x, d.y, '#39406b', {})
-      // offense (highlight open teammates + the handler)
+      for (const d of defenders) drawPlayer(d.x, d.y, '#39406b')
       for (const p of players) {
         let ring: string | undefined
         if (phase === 'live') {
           if (p.id === handler) ring = '#ffcf4a'
-          else {
-            const open = nearestDefenderTo(p.x, p.y)
-            ring = open > pr * 4 ? 'rgba(90,230,140,0.9)' : 'rgba(232,80,58,0.5)'
-          }
+          else ring = nearestDefenderTo(p.x, p.y) > pr * 4 ? 'rgba(90,230,140,0.9)' : 'rgba(232,80,58,0.5)'
         }
-        drawPlayer(p.x, p.y, teamColor, { ring })
+        drawPlayer(p.x, p.y, teamColor, ring)
       }
-      // ball
       if (ball.held !== null) {
         const p = players[ball.held]
-        const bob = phase === 'live' ? Math.sin(dribbleT * 10) * 3 : 0
-        drawBall(p.x + pr * 0.8, p.y + pr * 0.2 + bob)
+        const bob = phase === 'live' ? Math.abs(Math.sin(dribbleT * 9)) * 4 : 0
+        drawBall(p.x + pr * 0.8, p.y + pr * 0.1, bob)
       } else {
-        drawBall(ball.x, ball.y)
+        drawBall(ball.x, ball.y, ball.z)
       }
       drawAim()
       ctx!.restore()
     }
 
-    // --- loop ---
     let raf = 0
     let last = performance.now()
     function frame(t: number) {
@@ -595,13 +580,11 @@ export default function CourtGame() {
       const dt = Math.min(0.034, (t - last) / 1000)
       last = t
       update(dt)
-      // periodic dribble sound while live
       render()
       pushHud()
       raf = requestAnimationFrame(frame)
     }
 
-    // --- input ---
     function local(e: PointerEvent) {
       const r = canvas!.getBoundingClientRect()
       return { x: e.clientX - r.left, y: e.clientY - r.top }
@@ -651,8 +634,8 @@ export default function CourtGame() {
         const dragY = pt.y - down.y
         const len = Math.hypot(dragX, dragY)
         if (len < 18) {
-          // tap on handler — do nothing
-        } else if (dragY < -22 && len > 24) {
+          /* tap on handler — ignore */
+        } else if (dragX > 22 && Math.abs(dragX) > Math.abs(dragY) * 0.8) {
           startDrive()
         } else {
           const dir = { x: -dragX / len, y: -dragY / len }
@@ -663,8 +646,6 @@ export default function CourtGame() {
         if (moved < 20 && phase === 'live') startPass(tapCandidate)
       }
       tapCandidate = null
-      hintUntil = 0
-      void hintUntil
     }
 
     layout()
@@ -706,16 +687,15 @@ export default function CourtGame() {
             {hud.made}/{hud.att} · {pct}%
           </span>
         </div>
+        <div className="court-hint-top">
+          Pull <b>back</b> to shoot · tap <b>open</b> man to pass · swipe <b>right</b> to drive
+        </div>
         <div className={`court-clock${hud.clock <= 5 ? ' warn' : ''}`}>{hud.clock}</div>
       </div>
 
       <div className="court-canvas-wrap">
         <canvas ref={canvasRef} className="court-canvas" />
         {hud.msg && <div className={`court-msg ${hud.msgKind}`}>{hud.msg}</div>}
-        <div className="court-hint">
-          Pull <b>back</b> from your player to shoot · Tap an <b>open</b> teammate to pass · Swipe
-          <b> up</b> to drive
-        </div>
       </div>
     </div>
   )
