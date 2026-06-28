@@ -780,6 +780,48 @@ body {
   color: var(--gold);
 }
 
+/* --- 5v5 active-player info panel --- */
+.player-info {
+  position: absolute;
+  top: 8px;
+  left: calc(env(safe-area-inset-left) + 8px);
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(11, 14, 28, 0.78);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  pointer-events: none;
+}
+.pi-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.pi-name {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: var(--cream);
+}
+.pi-pos {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--gold);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+.pi-stats {
+  font-size: 11px;
+  color: var(--muted);
+}
+.pi-stats b {
+  color: var(--cream);
+  font-size: 13px;
+}
+
 /* --- 5v5 final-game card --- */
 .c5-final {
   position: absolute;

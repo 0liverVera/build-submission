@@ -66,7 +66,18 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
   })
   const [msg, setMsg] = useState<{ text: string; kind: string }>({ text: '', kind: '' })
   const [onDefense, setOnDefense] = useState(false)
-  const [hud, setHud] = useState({ us: 0, them: 0, quarter: 1, clock: 0, shot: 0, homeAbbr: 'HOM', awayAbbr: 'OPP' })
+  const [hud, setHud] = useState({
+    us: 0,
+    them: 0,
+    quarter: 1,
+    clock: 0,
+    shot: 0,
+    homeAbbr: 'HOM',
+    awayAbbr: 'OPP',
+    activeName: '',
+    activePos: '',
+    activePts: 0,
+  })
   const [final, setFinal] = useState<{ us: number; them: number; win: boolean } | null>(null)
   const oppColorUi = matchMode ? useGame.getState().currentOpponent()?.color ?? '#e8503a' : '#e8503a'
 
@@ -85,6 +96,14 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
     const awayShootF = 0.82 + (opp0?.offense ?? 6) * 0.03
     const homeAbbr = (st0.franchise?.teamName ?? 'HOM').slice(0, 3).toUpperCase()
     const awayAbbr = opp0?.abbr ?? 'OPP'
+    const shortName = (full?: string) => {
+      if (!full) return 'Player'
+      const parts = full.split(' ')
+      return parts.length > 1 ? `${parts[0][0]}. ${parts[parts.length - 1]}` : full
+    }
+    const homeNames = Array.from({ length: 5 }, (_, i) => shortName(starters[i]?.name))
+    const homePos = Array.from({ length: 5 }, (_, i) => starters[i]?.pos ?? '')
+    const homePoints = [0, 0, 0, 0, 0]
 
     const homeColor = franchise?.colorPrimary ?? '#ff8a3d'
     const awayColor = (matchMode && opp0?.color) || '#e8503a'
@@ -333,8 +352,10 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       const clutch = matchMode && quarter === 4 && gameClock <= 10 && Math.abs(us - them) <= 7
       if (made) {
         const pts = shotKind === '3' ? 3 : 2
-        if (possession === 'home') us += pts
-        else them += pts
+        if (possession === 'home') {
+          us += pts
+          homePoints[active] += pts
+        } else them += pts
         netFlash = 0.45
         netSwish = 0.5
         crowdJump = clutch ? 0.85 : 0.6
@@ -547,10 +568,24 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       setFinal({ us, them, win: us > them })
     }
     function pushHud() {
-      const key = `${us}|${them}|${quarter}|${Math.ceil(gameClock)}|${Math.ceil(shotClock)}`
+      const aName = possession === 'home' ? homeNames[active] : awayAbbr
+      const aPos = possession === 'home' ? homePos[active] : ''
+      const aPts = possession === 'home' ? homePoints[active] : 0
+      const key = `${us}|${them}|${quarter}|${Math.ceil(gameClock)}|${Math.ceil(shotClock)}|${aName}|${aPts}`
       if (key !== lastHudKey) {
         lastHudKey = key
-        setHud({ us, them, quarter, clock: Math.max(0, Math.ceil(gameClock)), shot: Math.max(0, Math.ceil(shotClock)), homeAbbr, awayAbbr })
+        setHud({
+          us,
+          them,
+          quarter,
+          clock: Math.max(0, Math.ceil(gameClock)),
+          shot: Math.max(0, Math.ceil(shotClock)),
+          homeAbbr,
+          awayAbbr,
+          activeName: aName,
+          activePos: aPos,
+          activePts: aPts,
+        })
       }
     }
 
@@ -857,6 +892,37 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
         ctx!.fillRect(bx, by, bw * stamina, 4)
       }
     }
+    function label(x: number, y: number, text: string, color: string) {
+      ctx!.font = `bold ${Math.max(9, Math.round(pr * 0.5))}px system-ui`
+      ctx!.textAlign = 'center'
+      ctx!.lineWidth = 3
+      ctx!.strokeStyle = 'rgba(0,0,0,0.8)'
+      ctx!.strokeText(text, x, y)
+      ctx!.fillStyle = color
+      ctx!.fillText(text, x, y)
+    }
+    function holderPct() {
+      const holder = possession === 'home' ? home[active] : away[awayHandler]
+      const defs = possession === 'home' ? away : home
+      const info = shotInfo(holder, defs, atkX(possession))
+      const f = possession === 'home' ? homeShootF : awayShootF
+      return Math.round(clamp(info.baseP * (info.open ? 1.1 : 0.6) * f, 0.05, 0.96) * 100)
+    }
+    function drawLabels() {
+      const ly = (p: P) => p.y + pr * 1.55
+      const holdsHome = possession === 'home' && phase === 'live'
+      for (let i = 0; i < home.length; i++) {
+        if (holdsHome && i === active) {
+          label(home[i].x, ly(home[i]), `${homeNames[i]} ${holderPct()}%`, '#ffe27a')
+        } else {
+          label(home[i].x, ly(home[i]), homeNames[i], 'rgba(255,255,255,0.92)')
+        }
+      }
+      if (possession === 'away' && phase === 'live') {
+        const h = away[awayHandler]
+        label(h.x, ly(h), `${awayAbbr} ${holderPct()}%`, '#ffb0a0')
+      }
+    }
     function drawJoystick() {
       if (joyId === null) return
       ctx!.fillStyle = 'rgba(255,255,255,0.08)'
@@ -886,6 +952,7 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       } else {
         drawBall(ball.x, ball.y, ball.z)
       }
+      drawLabels()
       drawOverlays()
       ctx!.restore()
       drawJoystick()
@@ -1018,6 +1085,17 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       )}
       <div className="court-canvas-wrap">
         <canvas ref={canvasRef} className="court-canvas" />
+        {matchMode && (
+          <div className="player-info">
+            <div className="pi-row">
+              <span className="pi-name">{hud.activeName || 'Player'}</span>
+              {hud.activePos && <span className="pi-pos">{hud.activePos}</span>}
+            </div>
+            <div className="pi-stats">
+              PTS <b>{hud.activePts}</b>
+            </div>
+          </div>
+        )}
         {msg.text && <div className={`court-msg ${msg.kind}`}>{msg.text}</div>}
 
         {final && (
