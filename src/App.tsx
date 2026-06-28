@@ -2,12 +2,13 @@ import { useGame } from './state/store'
 import MainMenu from './screens/MainMenu'
 import NewFranchise from './screens/NewFranchise'
 import Hub from './screens/Hub'
-import Placeholder from './screens/Placeholder'
 import Roster from './screens/Roster'
 import FrontOffice from './screens/FrontOffice'
 import Press from './screens/Press'
 import Season from './screens/Season'
 import Offseason from './screens/Offseason'
+import Store from './screens/Store'
+import TeamEditor from './screens/TeamEditor'
 import GameScreen from './court/GameScreen'
 import RotateGate from './ui/RotateGate'
 import { useEffect, useState } from 'react'
@@ -21,6 +22,22 @@ function loadMuted() {
   } catch {
     return false
   }
+}
+
+function Toast() {
+  const toast = useGame((s) => s.toast)
+  const clearToast = useGame((s) => s.clearToast)
+  useEffect(() => {
+    if (!toast) return
+    const t = window.setTimeout(clearToast, 1800)
+    return () => window.clearTimeout(t)
+  }, [toast, clearToast])
+  if (!toast) return null
+  return (
+    <div className="toast-wrap">
+      <div className="toast">{toast}</div>
+    </div>
+  )
 }
 
 function MuteButton() {
@@ -67,13 +84,9 @@ export default function App() {
       {screen === 'roster' && <Roster />}
       {screen === 'frontoffice' && <FrontOffice />}
       {screen === 'press' && <Press />}
-      {screen === 'store' && (
-        <Placeholder
-          title="STORE"
-          icon="🛒"
-          note="Credit packs & the team editor arrive in Phase 10."
-        />
-      )}
+      {screen === 'store' && <Store />}
+      {screen === 'teameditor' && <TeamEditor />}
+      <Toast />
     </div>
   )
 }

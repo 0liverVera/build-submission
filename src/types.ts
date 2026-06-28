@@ -92,6 +92,9 @@ export interface Franchise {
   tenure: Record<string, number>
   /** Active offseason draft/FA pools (Phase 7); cleared on new season. */
   offseason?: OffseasonData | null
+  // --- Monetization (Phase 10, all mock) ---
+  unlimited?: boolean
+  retryTokens?: number
 }
 
 export type Screen =
@@ -105,3 +108,4 @@ export type Screen =
   | 'frontoffice'
   | 'press'
   | 'store'
+  | 'teameditor'

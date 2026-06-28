@@ -100,6 +100,15 @@ function loadSave(): Franchise | null {
         dirty = true
       }
     }
+    // Phase 10 defaults.
+    if (f.unlimited === undefined) {
+      f.unlimited = false
+      dirty = true
+    }
+    if (typeof f.retryTokens !== 'number') {
+      f.retryTokens = 0
+      dirty = true
+    }
     if (dirty) writeSave(f)
     return f
   } catch {
@@ -128,6 +137,8 @@ interface GameStore {
   franchise: Franchise | null
   hasSave: boolean
   pendingEvent: PressEvent | null
+  toast: string | null
+  storeAd: boolean
 
   navigate: (s: Screen) => void
   startNewFranchise: (input: NewFranchiseInput) => void
@@ -155,6 +166,16 @@ interface GameStore {
   cutPlayer: (id: string) => void
   /** Commit the offseason → fresh season. */
   commitNextSeason: () => void
+
+  // --- Mock store / monetization (Phase 10) ---
+  buyCreditsPack: (amount: number) => void
+  buyUnlimited: () => void
+  watchAdForCredits: () => void
+  buyRetryToken: () => void
+  editTeam: (input: { city: string; teamName: string; colorPrimary: string; colorSecondary: string }) => void
+  showToast: (msg: string) => void
+  clearToast: () => void
+
   /** Persist the current franchise — call after every meta change. */
   autosave: () => void
 }
@@ -164,6 +185,8 @@ export const useGame = create<GameStore>((set, get) => ({
   franchise: null,
   hasSave: !!loadSave(),
   pendingEvent: null,
+  toast: null,
+  storeAd: false,
 
   navigate: (s) => set({ screen: s }),
 
@@ -182,6 +205,8 @@ export const useGame = create<GameStore>((set, get) => ({
       roster: generateRoster(),
       facilities: { ...DEFAULT_FACILITIES },
       fanInterest: 50,
+      unlimited: false,
+      retryTokens: 0,
       ...initSeason(),
     }
     writeSave(f)
@@ -366,7 +391,16 @@ export const useGame = create<GameStore>((set, get) => ({
     const champion = s.alive
     const rank = playerRank({ ...playerEntry(f), w: s.wins, l: s.losses }, f.league)
     const goalMet = s.goal.type === 'playoffs' ? rank <= 4 : s.wins >= s.goal.target
-    const failedGoals = goalMet ? 0 : f.failedGoals + 1
+    let failedGoals = goalMet ? 0 : f.failedGoals + 1
+    let retryTokens = f.retryTokens ?? 0
+    let savedByToken = false
+
+    // A retry token saves your job before a firing.
+    if (failedGoals >= 3 && retryTokens > 0) {
+      retryTokens -= 1
+      failedGoals = 2
+      savedByToken = true
+    }
 
     // Repeated failure → fired (run over).
     if (failedGoals >= 3) {
@@ -423,6 +457,7 @@ export const useGame = create<GameStore>((set, get) => ({
       hallOfFame: hof,
       titles: f.titles + (champion ? 1 : 0),
       failedGoals,
+      retryTokens,
       credits: f.credits + reward,
       fanInterest: clampN(f.fanInterest + (champion ? 12 : goalMet ? 4 : -6), 0, 100),
       offseason: {
@@ -433,7 +468,7 @@ export const useGame = create<GameStore>((set, get) => ({
       },
     }
     writeSave(nf)
-    set({ franchise: nf })
+    set({ franchise: nf, toast: savedByToken ? '🎟️ Retry token saved your job!' : null })
   },
 
   draftPlayer: (id) => {
@@ -501,6 +536,67 @@ export const useGame = create<GameStore>((set, get) => ({
     }
     writeSave(nf)
     set({ franchise: nf })
+    sfx.confirm()
+  },
+
+  showToast: (msg) => set({ toast: msg }),
+  clearToast: () => set({ toast: null }),
+
+  buyCreditsPack: (amount) => {
+    const f = get().franchise
+    if (!f) return
+    const nf = { ...f, credits: f.credits + amount }
+    writeSave(nf)
+    set({ franchise: nf, toast: `🪙 +${amount} credits` })
+    sfx.confirm()
+  },
+
+  buyUnlimited: () => {
+    const f = get().franchise
+    if (!f || f.unlimited) return
+    const nf = { ...f, unlimited: true, credits: f.credits + 100 }
+    writeSave(nf)
+    set({ franchise: nf, toast: '⭐ UNLIMITED unlocked — Team Editor open!' })
+    sfx.three()
+  },
+
+  watchAdForCredits: () => {
+    if (get().storeAd) return
+    set({ storeAd: true })
+    window.setTimeout(() => {
+      const f = get().franchise
+      if (!f) {
+        set({ storeAd: false })
+        return
+      }
+      const nf = { ...f, credits: f.credits + 15 }
+      writeSave(nf)
+      set({ franchise: nf, storeAd: false, toast: '🪙 +15 credits' })
+      sfx.confirm()
+    }, 2000)
+  },
+
+  buyRetryToken: () => {
+    const f = get().franchise
+    if (!f) return
+    const nf = { ...f, retryTokens: (f.retryTokens ?? 0) + 1 }
+    writeSave(nf)
+    set({ franchise: nf, toast: '🎟️ +1 Retry Token' })
+    sfx.confirm()
+  },
+
+  editTeam: (input) => {
+    const f = get().franchise
+    if (!f || !f.unlimited) return
+    const nf: Franchise = {
+      ...f,
+      city: input.city.trim() || f.city,
+      teamName: input.teamName.trim() || f.teamName,
+      colorPrimary: input.colorPrimary,
+      colorSecondary: input.colorSecondary,
+    }
+    writeSave(nf)
+    set({ franchise: nf, toast: '✓ Team updated!' })
     sfx.confirm()
   },
 
