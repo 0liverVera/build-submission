@@ -54,10 +54,21 @@ interface Hud {
   msgKind: string
 }
 
-export default function CourtGame() {
+interface CourtGameProps {
+  /** Match mode: play exactly one possession, then report via onResult. */
+  matchMode?: boolean
+  onResult?: (points: number, turnover: boolean) => void
+  onShotClock?: (sec: number) => void
+}
+
+export default function CourtGame({ matchMode = false, onResult, onShotClock }: CourtGameProps) {
   const navigate = useGame((s) => s.navigate)
   const franchise = useGame((s) => s.franchise)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const onResultRef = useRef(onResult)
+  onResultRef.current = onResult
+  const onShotClockRef = useRef(onShotClock)
+  onShotClockRef.current = onShotClock
   const [hud, setHud] = useState<Hud>({
     points: 0,
     made: 0,
@@ -140,6 +151,10 @@ export default function CourtGame() {
     let points = 0
     let made = 0
     let att = 0
+    let possPoints = 0
+    let possTurnover = false
+    let reported = false
+    let lastSC = 14
 
     let aiming = false
     const down = { x: 0, y: 0 }
@@ -198,6 +213,8 @@ export default function CourtGame() {
       phase = 'live'
       shotClock = 14
       contested = false
+      possPoints = 0
+      possTurnover = false
       setDefenderTargets(handler, true)
     }
 
@@ -237,6 +254,7 @@ export default function CourtGame() {
       } else {
         const pts = ball.three ? 3 : 2
         points += pts
+        possPoints = pts
         made++
         netFlash = 0.45
         ball.x = rimX
@@ -291,6 +309,7 @@ export default function CourtGame() {
         shake = Math.max(shake, 6)
       } else if (guarded) {
         points += 2
+        possPoints = 2
         made++
         setMsg('AND-1 LAYUP!', 'make')
         sfx.make()
@@ -298,6 +317,7 @@ export default function CourtGame() {
         shake = Math.max(shake, 4)
       } else {
         points += 2
+        possPoints = 2
         made++
         setMsg('DUNK!', 'dunk')
         sfx.dunk()
@@ -311,6 +331,7 @@ export default function CourtGame() {
     function turnover(msg: string) {
       setMsg(msg, 'miss')
       sfx.buzzer()
+      possTurnover = true
       phase = 'resolved'
       resolveAt = now + 1.0
       ball.held = null
@@ -329,6 +350,11 @@ export default function CourtGame() {
 
       if (phase === 'live') {
         shotClock -= dt
+        const sc = Math.ceil(shotClock)
+        if (sc !== lastSC) {
+          lastSC = sc
+          onShotClockRef.current?.(Math.max(0, sc))
+        }
         if (shotClock <= 0) {
           shotClock = 0
           turnover('SHOT CLOCK!')
@@ -368,8 +394,15 @@ export default function CourtGame() {
       }
 
       if (phase === 'resolved' && now >= resolveAt) {
-        newPossession()
-        pushHud('', '')
+        if (matchMode) {
+          if (!reported) {
+            reported = true
+            onResultRef.current?.(possPoints, possTurnover)
+          }
+        } else {
+          newPossession()
+          pushHud('', '')
+        }
       }
     }
 
@@ -670,6 +703,15 @@ export default function CourtGame() {
   }, [franchise])
 
   const pct = hud.att > 0 ? Math.round((hud.made / hud.att) * 100) : 0
+
+  if (matchMode) {
+    return (
+      <div className="court-canvas-wrap match">
+        <canvas ref={canvasRef} className="court-canvas" />
+        {hud.msg && <div className={`court-msg ${hud.msgKind}`}>{hud.msg}</div>}
+      </div>
+    )
+  }
 
   return (
     <div className="court-wrap">

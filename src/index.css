@@ -499,6 +499,165 @@ body {
   }
 }
 
+/* --- Match scoreboard + flow (Phase 3) --- */
+.scoreboard {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: calc(env(safe-area-inset-top) + 8px) 14px 8px;
+  background: linear-gradient(180deg, #1f2540 0%, #161a2e 100%);
+  border-bottom: 2px solid #0a0c16;
+}
+.sb-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: var(--p, var(--orange));
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+}
+.sb-team.opp {
+  margin-left: auto;
+}
+.sb-abbr {
+  font-family: var(--font-pixel);
+  font-size: 12px;
+  color: #fff;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.4);
+}
+.sb-score {
+  font-family: var(--font-pixel);
+  font-size: 20px;
+  color: #fff;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+}
+.sb-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.2;
+}
+.sb-q {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.sb-clock {
+  font-family: var(--font-pixel);
+  font-size: 16px;
+  color: var(--cream);
+}
+.sb-clock.clutch {
+  color: #fff;
+  background: var(--danger);
+  padding: 1px 6px;
+  border-radius: 6px;
+  animation: clockPulse 0.5s ease-in-out infinite;
+}
+.sb-shot {
+  font-size: 11px;
+  color: var(--gold);
+}
+
+.court-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+.court-canvas-wrap.match {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.oppsim {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: radial-gradient(60% 60% at 50% 45%, #1c2238, #0e1120);
+  text-align: center;
+}
+.oppsim-crest {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-pixel);
+  font-size: 26px;
+  color: #fff;
+  background: var(--p, var(--orange));
+  border: 3px solid rgba(0, 0, 0, 0.4);
+  animation: bounce 1.2s ease-in-out infinite;
+}
+.oppsim-line {
+  font-family: var(--font-pixel);
+  font-size: 18px;
+  color: var(--cream);
+  animation: msgPop 0.3s ease both;
+}
+.oppsim-line.score {
+  color: #ff8a8a;
+}
+.oppsim-line.stop {
+  color: #5ae68c;
+}
+.oppsim-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.break-card {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: radial-gradient(60% 60% at 50% 45%, #1c2238, #0e1120);
+}
+.break-title {
+  font-family: var(--font-pixel);
+  font-size: 18px;
+  color: var(--gold);
+}
+.break-score {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-family: var(--font-pixel);
+  font-size: 14px;
+  color: var(--muted);
+}
+.break-score b {
+  font-size: 26px;
+  color: var(--cream);
+}
+.final-title {
+  font-family: var(--font-pixel);
+  font-size: 34px;
+  -webkit-text-stroke: 2px var(--ink);
+  paint-order: stroke fill;
+}
+.final-title.win {
+  color: var(--gold);
+}
+.final-title.loss {
+  color: var(--danger);
+}
+.final-reward {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--gold);
+}
+
 .court-canvas-wrap {
   position: relative;
   flex: 1 1 auto;

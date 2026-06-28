@@ -38,6 +38,8 @@ interface GameStore {
   startNewFranchise: (input: NewFranchiseInput) => void
   continueSave: () => void
   deleteSave: () => void
+  /** Apply a finished game's result (record + credits) and autosave. */
+  recordGameResult: (win: boolean, credits: number) => void
   /** Persist the current franchise — call after every meta change (Phase 4+). */
   autosave: () => void
 }
@@ -79,6 +81,19 @@ export const useGame = create<GameStore>((set, get) => ({
       /* ignore */
     }
     set({ franchise: null, hasSave: false, screen: 'menu' })
+  },
+
+  recordGameResult: (win, credits) => {
+    const f = get().franchise
+    if (!f) return
+    const nf: Franchise = {
+      ...f,
+      wins: f.wins + (win ? 1 : 0),
+      losses: f.losses + (win ? 0 : 1),
+      credits: f.credits + credits,
+    }
+    writeSave(nf)
+    set({ franchise: nf })
   },
 
   autosave: () => {
