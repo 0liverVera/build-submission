@@ -117,6 +117,7 @@ function GameOverOverlay() {
   return (
     <div className="gameover-overlay">
       <div className="gameover-card">
+        <div className="go-emblem">💀</div>
         <div className="go-title">DEFEATED</div>
         <div className="go-row">
           <span>You reached</span>
@@ -197,6 +198,7 @@ export default function App() {
           {phase === 'fight' && <CombatSim />}
         </Canvas>
 
+        <div className="arena-vignette" />
         {phase === 'prep' && <ModifierChip />}
         {phase === 'prep' && <FightDock />}
         <BannerOverlay />

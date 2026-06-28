@@ -33,6 +33,7 @@ function ShopCard({
         {icon.emoji}
       </div>
       <div className="sc-name">{def.name}</div>
+      <div className="sc-role">{def.role}</div>
       <div className="sc-cost">
         <span>🪙</span>
         <span>{def.cost}</span>
