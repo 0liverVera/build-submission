@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import CourtGame from './CourtGame'
 import { useGame } from '../state/store'
+import { teamDefense } from '../game/players'
 import { sfx } from '../audio/sfx'
 
 /**
@@ -24,10 +25,17 @@ interface Opp {
   name: string
   abbr: string
   color: string
+  offense: number // 1–10, drives their sim scoring
 }
 function makeOpp(): Opp {
   const name = rnd(NAMES)
-  return { city: rnd(CITIES), name, abbr: name.slice(0, 3).toUpperCase(), color: rnd(OPP_COLORS) }
+  return {
+    city: rnd(CITIES),
+    name,
+    abbr: name.slice(0, 3).toUpperCase(),
+    color: rnd(OPP_COLORS),
+    offense: 4 + Math.floor(Math.random() * 4), // 4–7
+  }
 }
 
 function mmss(sec: number) {
@@ -61,6 +69,13 @@ export default function GameScreen() {
   const quarterRef = useRef(1)
 
   const teamAbbr = (franchise?.teamName ?? 'HOM').slice(0, 3).toUpperCase()
+  const roster = franchise?.roster ?? []
+  const ratings = roster.slice(0, 5).map((p) => ({
+    shooting: p.shooting,
+    speed: p.speed,
+    inside: p.inside,
+  }))
+  const ourDefense = teamDefense(roster)
 
   function advanceClock() {
     const next = Math.max(0, clockRef.current - (TIME_PER_POSS + (Math.random() * 6 - 3)))
@@ -145,11 +160,14 @@ export default function GameScreen() {
           <CourtGame
             key={possKey}
             matchMode
+            ratings={ratings}
             onResult={(pts) => endPlayerPossession(pts)}
             onShotClock={(s) => setShotClock(s)}
           />
         )}
-        {flow === 'oppsim' && <OppSim opp={opp} onDone={endOppPossession} />}
+        {flow === 'oppsim' && (
+          <OppSim opp={opp} ourDefense={ourDefense} onDone={endOppPossession} />
+        )}
         {flow === 'break' && (
           <QuarterBreak
             quarter={quarter}
@@ -178,13 +196,25 @@ export default function GameScreen() {
 }
 
 /** A quick, tense simulated opponent possession (Section 2 watch-and-react). */
-function OppSim({ opp, onDone }: { opp: Opp; onDone: (pts: number) => void }) {
+function OppSim({
+  opp,
+  ourDefense,
+  onDone,
+}: {
+  opp: Opp
+  ourDefense: number
+  onDone: (pts: number) => void
+}) {
   const [line, setLine] = useState(`${opp.abbr} bring it up…`)
   const [kind, setKind] = useState<'neutral' | 'score' | 'stop'>('neutral')
+  const onDoneRef = useRef(onDone)
+  onDoneRef.current = onDone
 
   useEffect(() => {
     const actions = ['drives the lane', 'pulls up from deep', 'works the post', 'runs the pick & roll']
-    const makes = Math.random() < 0.47
+    // Opponent offense vs our team defense decides the make chance.
+    const makeProb = Math.max(0.2, Math.min(0.72, 0.46 + (opp.offense - ourDefense) * 0.035))
+    const makes = Math.random() < makeProb
     const three = makes && Math.random() < 0.33
     const pts = makes ? (three ? 3 : 2) : 0
     const timers: number[] = []
@@ -207,9 +237,11 @@ function OppSim({ opp, onDone }: { opp: Opp; onDone: (pts: number) => void }) {
         }
       }, 1450),
     )
-    timers.push(window.setTimeout(() => onDone(pts), 2500))
+    timers.push(window.setTimeout(() => onDoneRef.current(pts), 2500))
     return () => timers.forEach(clearTimeout)
-  }, [opp, onDone])
+    // run once per mounted possession; onDone is read via ref
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const oppVars = { ['--p']: opp.color } as CSSProperties
   return (

@@ -754,6 +754,132 @@ body {
   color: var(--muted);
 }
 
+/* --- Roster (Phase 4) --- */
+.roster-screen .screen-head {
+  margin-bottom: 10px;
+}
+.roster-sub {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+.roster-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.roster-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  font-weight: 700;
+  color: var(--gold);
+  margin: 4px 2px 2px;
+}
+.roster-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.roster-row.bench {
+  grid-template-columns: repeat(4, 1fr);
+}
+.pcard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 2px solid var(--line);
+}
+.pcard-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pavatar {
+  position: relative;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  color: #fff;
+  background: var(--p, var(--orange));
+  border: 2px solid rgba(0, 0, 0, 0.35);
+}
+.pmorale {
+  position: absolute;
+  bottom: -7px;
+  right: -7px;
+  font-size: 13px;
+}
+.pcard-id {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pname {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cream);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pmeta {
+  font-size: 10px;
+  color: var(--muted);
+}
+.povr {
+  flex: 0 0 auto;
+  font-family: var(--font-pixel);
+  font-size: 14px;
+  color: var(--gold);
+}
+.pstats {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.pstat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.ps-k {
+  width: 26px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.ps-bar {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.ps-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--orange), var(--gold));
+}
+.ps-v {
+  width: 14px;
+  text-align: right;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--cream);
+}
+
 /* --- Placeholder shells --- */
 .ph-body {
   flex: 1 1 auto;

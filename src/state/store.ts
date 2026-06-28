@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Franchise, Screen } from '../types'
+import { generateRoster } from '../game/players'
 
 // Bump this if the save shape changes incompatibly in a later phase.
 const SAVE_KEY = 'hoop_save_v1'
@@ -7,7 +8,14 @@ const SAVE_KEY = 'hoop_save_v1'
 function loadSave(): Franchise | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY)
-    return raw ? (JSON.parse(raw) as Franchise) : null
+    if (!raw) return null
+    const f = JSON.parse(raw) as Franchise
+    // Migrate older saves that predate rosters (Phase 4).
+    if (!f.roster || !f.roster.length) {
+      f.roster = generateRoster()
+      writeSave(f)
+    }
+    return f
   } catch {
     return null
   }
@@ -63,6 +71,7 @@ export const useGame = create<GameStore>((set, get) => ({
       wins: 0,
       losses: 0,
       createdAt: Date.now(),
+      roster: generateRoster(),
     }
     writeSave(f)
     set({ franchise: f, hasSave: true, screen: 'hub' })

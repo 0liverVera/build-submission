@@ -54,14 +54,28 @@ interface Hud {
   msgKind: string
 }
 
+export interface OnCourtRating {
+  shooting: number
+  speed: number
+  inside: number
+}
 interface CourtGameProps {
   /** Match mode: play exactly one possession, then report via onResult. */
   matchMode?: boolean
   onResult?: (points: number, turnover: boolean) => void
   onShotClock?: (sec: number) => void
+  /** Per-position starter ratings (FORMATION order: PG,SG,SF,PF,C). */
+  ratings?: OnCourtRating[]
 }
 
-export default function CourtGame({ matchMode = false, onResult, onShotClock }: CourtGameProps) {
+const DEFAULT_RATING: OnCourtRating = { shooting: 6, speed: 6, inside: 6 }
+
+export default function CourtGame({
+  matchMode = false,
+  onResult,
+  onShotClock,
+  ratings,
+}: CourtGameProps) {
   const navigate = useGame((s) => s.navigate)
   const franchise = useGame((s) => s.franchise)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -69,6 +83,8 @@ export default function CourtGame({ matchMode = false, onResult, onShotClock }: 
   onResultRef.current = onResult
   const onShotClockRef = useRef(onShotClock)
   onShotClockRef.current = onShotClock
+  const ratingsRef = useRef(ratings)
+  ratingsRef.current = ratings
   const [hud, setHud] = useState<Hud>({
     points: 0,
     made: 0,
@@ -99,6 +115,12 @@ export default function CourtGame({ matchMode = false, onResult, onShotClock }: 
 
     const dist = (ax: number, ay: number, bx: number, by: number) =>
       Math.hypot(ax - bx, ay - by)
+
+    // Ratings → feel. Shooting widens the make window; speed = more open;
+    // inside = better drives.
+    const rating = (i: number) => ratingsRef.current?.[i] ?? DEFAULT_RATING
+    const shootMult = (sh: number) => 0.72 + sh * 0.055 // sh1→0.78, sh10→1.27
+    let shotTolMult = 1
 
     const players: OPlayer[] = FORMATION.map((f, i) => ({
       id: i,
@@ -185,7 +207,10 @@ export default function CourtGame({ matchMode = false, onResult, onShotClock }: 
     function setDefenderTargets(handlerId: number, snap = false) {
       for (const d of defenders) {
         const p = players[d.guard]
-        const tight = d.guard === handlerId ? 0.16 : 0.4
+        // Faster off-ball players shake free more (defender sags further).
+        const speed = rating(d.guard).speed
+        const tight =
+          d.guard === handlerId ? 0.16 : 0.32 + speed * 0.018
         d.tx = p.x + (rimX - p.x) * tight + (Math.random() * 2 - 1) * 5
         d.ty = p.y + (rimY - p.y) * tight + (Math.random() * 2 - 1) * 5
         if (snap) {
@@ -233,6 +258,7 @@ export default function CourtGame({ matchMode = false, onResult, onShotClock }: 
       ball.vy = (dir.y * range) / ball.dur
       ball.three = dist(p.x, p.y, rimX, rimY) > arcR
       contested = nearestDefenderTo(p.x, p.y) < pr * 3.2
+      shotTolMult = shootMult(rating(handler).shooting)
       phase = 'shooting'
       att++
       sfx.shoot()
@@ -240,7 +266,7 @@ export default function CourtGame({ matchMode = false, onResult, onShotClock }: 
 
     function resolveShot() {
       const d = dist(ball.x, ball.y, rimX, rimY)
-      const tol = TOL * (contested ? 0.62 : 1)
+      const tol = TOL * shotTolMult * (contested ? 0.62 : 1)
       let kind: 'swish' | 'make' | 'rattleIn' | 'miss'
       if (d < tol * 0.42) kind = 'swish'
       else if (d < tol) kind = 'make'
@@ -302,8 +328,10 @@ export default function CourtGame({ matchMode = false, onResult, onShotClock }: 
 
     function resolveDrive() {
       att++
+      const inside = rating(handler).inside
+      const blockChance = clamp(0.62 - inside * 0.05, 0.12, 0.62)
       const guarded = nearestDefenderTo(rimX - pr, rimY) < pr * 2.6
-      if (guarded && Math.random() < 0.5) {
+      if (guarded && Math.random() < blockChance) {
         setMsg('STUFFED!', 'miss')
         sfx.block()
         shake = Math.max(shake, 6)
@@ -560,7 +588,10 @@ export default function CourtGame({ matchMode = false, onResult, onShotClock }: 
       const range = lerp(W * 0.22, W * 1.0, power)
       const lx = p.x + dir.x * range
       const ly = p.y + dir.y * range
-      const tol = TOL * (nearestDefenderTo(p.x, p.y) < pr * 3.2 ? 0.62 : 1)
+      const tol =
+        TOL *
+        shootMult(rating(handler).shooting) *
+        (nearestDefenderTo(p.x, p.y) < pr * 3.2 ? 0.62 : 1)
       const inRim = dist(lx, ly, rimX, rimY) < tol
       ctx!.strokeStyle = inRim ? 'rgba(90,230,140,0.95)' : 'rgba(255,255,255,0.8)'
       ctx!.lineWidth = 3

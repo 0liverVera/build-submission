@@ -3,6 +3,7 @@ import MainMenu from './screens/MainMenu'
 import NewFranchise from './screens/NewFranchise'
 import Hub from './screens/Hub'
 import Placeholder from './screens/Placeholder'
+import Roster from './screens/Roster'
 import GameScreen from './court/GameScreen'
 import RotateGate from './ui/RotateGate'
 
@@ -16,9 +17,7 @@ export default function App() {
       {screen === 'newFranchise' && <NewFranchise />}
       {screen === 'hub' && <Hub />}
       {screen === 'game' && <GameScreen />}
-      {screen === 'roster' && (
-        <Placeholder title="ROSTER" icon="👥" note="Players & ratings arrive in Phase 4." />
-      )}
+      {screen === 'roster' && <Roster />}
       {screen === 'frontoffice' && (
         <Placeholder
           title="FRONT OFFICE"
