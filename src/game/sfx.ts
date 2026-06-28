@@ -73,4 +73,28 @@ export const sfx = {
   deny() {
     tone({ freq: 170, dur: 0.16, type: 'sawtooth', gain: 0.12, slideTo: 90 })
   },
+  hit() {
+    tone({ freq: 220, dur: 0.05, type: 'sawtooth', gain: 0.1, slideTo: 130 })
+    tone({ freq: 420, dur: 0.04, type: 'square', gain: 0.06 })
+  },
+  heal() {
+    tone({ freq: 620, dur: 0.12, type: 'sine', gain: 0.1, slideTo: 900 })
+  },
+  die() {
+    tone({ freq: 240, dur: 0.22, type: 'sawtooth', gain: 0.12, slideTo: 70 })
+  },
+  fight() {
+    tone({ freq: 180, dur: 0.18, type: 'square', gain: 0.16, slideTo: 320 })
+    tone({ freq: 90, dur: 0.3, type: 'sine', gain: 0.2 })
+  },
+  win() {
+    tone({ freq: 523, dur: 0.12, type: 'triangle', gain: 0.16 })
+    tone({ freq: 659, dur: 0.12, type: 'triangle', gain: 0.16, delay: 0.1 })
+    tone({ freq: 784, dur: 0.2, type: 'triangle', gain: 0.16, delay: 0.2 })
+  },
+  lose() {
+    tone({ freq: 392, dur: 0.16, type: 'triangle', gain: 0.14 })
+    tone({ freq: 311, dur: 0.16, type: 'triangle', gain: 0.14, delay: 0.14 })
+    tone({ freq: 233, dur: 0.32, type: 'triangle', gain: 0.16, delay: 0.28 })
+  },
 }

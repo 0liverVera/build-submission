@@ -285,40 +285,79 @@ body {
   min-width: 60%;
 }
 
-/* --- Temporary dev controls (removed when the shop lands in Phase 3) --- */
-.dev-bar {
+/* --- Floating combat damage / heal numbers (Phase 4) --- */
+.dmg-pop {
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  -webkit-text-stroke: 2px var(--text-outline);
+  paint-order: stroke fill;
+  white-space: nowrap;
+  animation: dmgFloat 0.75s ease-out forwards;
+}
+@keyframes dmgFloat {
+  0% {
+    transform: translateY(0) scale(0.6);
+    opacity: 0;
+  }
+  15% {
+    transform: translateY(-8px) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-48px) scale(1);
+    opacity: 0;
+  }
+}
+
+/* --- Victory / Defeat banner (Phase 4; full juice in Phase 7) --- */
+.banner-overlay {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 8px;
+  inset: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  z-index: 9;
+  justify-content: center;
   pointer-events: none;
+  z-index: 20;
 }
-.dev-hint {
-  font-size: 11px;
-  font-weight: 500;
-  color: #5a3a20;
-  background: rgba(255, 246, 230, 0.78);
-  padding: 3px 10px;
-  border-radius: 10px;
-}
-.dev-btn {
-  pointer-events: auto;
-  font-family: inherit;
-  font-weight: 600;
-  font-size: 14px;
+.banner {
+  font-weight: 700;
+  font-size: 52px;
+  letter-spacing: 2px;
+  padding: 14px 40px;
+  border-radius: 24px;
   color: var(--text-cream);
-  background: #2f7d4f;
-  border: 3px solid #1f5836;
-  border-radius: 14px;
-  box-shadow: 0 4px 0 #1f5836;
-  padding: 9px 18px;
+  -webkit-text-stroke: 3px var(--text-outline);
+  paint-order: stroke fill;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+  animation: bannerIn 0.5s cubic-bezier(0.2, 1.5, 0.4, 1) forwards;
 }
-.dev-btn:active {
-  transform: translateY(3px);
-  box-shadow: 0 1px 0 #1f5836;
+.banner.win {
+  background: linear-gradient(180deg, var(--gold) 0%, var(--gold-deep) 100%);
+}
+.banner.lose {
+  background: linear-gradient(180deg, #e8503a 0%, #a8311f 100%);
+}
+@keyframes bannerIn {
+  0% {
+    transform: scale(0.3) translateY(-30px);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+/* --- Battle status strip (replaces the shop during a fight) --- */
+.battle-strip {
+  flex: 0 0 auto;
+  padding: 18px 12px calc(env(safe-area-inset-bottom) + 18px);
+  text-align: center;
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 3px;
+  color: var(--text-cream);
+  text-shadow: 0 2px 0 var(--text-outline);
+  background: linear-gradient(180deg, rgba(74, 44, 25, 0) 0%, var(--arena-brown) 30%);
 }

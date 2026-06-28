@@ -32,6 +32,9 @@ interface Burst {
   pos: [number, number, number]
 }
 
+export type Phase = 'prep' | 'fight'
+export type FightResult = 'win' | 'lose'
+
 interface GameState {
   board: (UnitInstance | null)[]
   bench: (UnitInstance | null)[]
@@ -39,6 +42,9 @@ interface GameState {
   coins: number
   lives: number
   wave: number
+  phase: Phase
+  /** Last fight outcome, shown as a banner; null when cleared. */
+  banner: FightResult | null
   bursts: Burst[]
   /** Screen-shake trigger: timestamp + strength, read by the camera rig. */
   kickAt: number
@@ -49,7 +55,9 @@ interface GameState {
   moveUnit: (from: SlotRef, to: SlotRef) => void
   buyFromShop: (index: number) => void
   reroll: () => void
-  grantIncome: () => void
+  startFight: () => void
+  finishFight: (result: FightResult) => void
+  clearBanner: () => void
   removeBurst: (id: string) => void
   triggerShake: (power: number) => void
 }
@@ -73,6 +81,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   coins: START_COINS,
   lives: 3,
   wave: 1,
+  phase: 'prep',
+  banner: null,
   bursts: [],
   kickAt: 0,
   kickPower: 0,
@@ -158,14 +168,37 @@ export const useGameStore = create<GameState>((set, get) => ({
     sfx.reroll()
   },
 
-  grantIncome: () => {
+  startFight: () => {
     const s = get()
-    const interest = interestFor(s.coins)
-    const gain = INCOME_BASE + WIN_BONUS + interest
-    // New round: collect income (base + win bonus + interest) and a free shop.
-    set({ coins: s.coins + gain, wave: s.wave + 1, shop: rollShopArr() })
-    sfx.coin()
+    if (s.phase !== 'prep') return
+    if (!s.board.some(Boolean)) {
+      // Need at least one unit on the board to fight
+      sfx.deny()
+      return
+    }
+    // zoom-punch feel when the battle kicks off
+    set({ phase: 'fight', banner: null, kickAt: performance.now(), kickPower: 0.22 })
+    sfx.fight()
   },
+
+  finishFight: (result) => {
+    const s = get()
+    if (s.phase !== 'fight') return
+    let { coins, lives, wave } = s
+    if (result === 'win') {
+      // Income: base + win bonus + interest, then advance the wave
+      coins += INCOME_BASE + WIN_BONUS + interestFor(coins)
+      wave += 1
+    } else {
+      coins += INCOME_BASE
+      lives = Math.max(0, lives - 1)
+    }
+    set({ phase: 'prep', banner: result, coins, lives, wave, shop: rollShopArr() })
+    if (result === 'win') sfx.win()
+    else sfx.lose()
+  },
+
+  clearBanner: () => set({ banner: null }),
 
   removeBurst: (id) =>
     set((s) => ({ bursts: s.bursts.filter((b) => b.id !== id) })),

@@ -1,13 +1,15 @@
+import { useEffect } from 'react'
 import { Canvas } from '@react-three/fiber'
 import Arena from './three/Arena'
 import Board from './three/Board'
+import CombatSim from './three/CombatSim'
 import Shop from './ui/Shop'
 import { useGameStore } from './game/store'
 
 /**
- * Phase 3 shell: top HUD, the 3D colosseum + interactive board (grid, bench,
- * drag & merge), and the recruit shop. A temporary "next wave" control grants
- * income so the economy can be tested until real fights/waves land (Phase 4–5).
+ * Phase 4 shell: prep phase shows the board + recruit shop + FIGHT button.
+ * Pressing FIGHT swaps the board for the auto-battle simulation; on resolution
+ * a VICTORY/DEFEAT banner shows and play returns to prep.
  */
 
 function TopHud() {
@@ -32,19 +34,42 @@ function TopHud() {
   )
 }
 
-function DevBar() {
-  const grantIncome = useGameStore((s) => s.grantIncome)
+function FightDock() {
+  const startFight = useGameStore((s) => s.startFight)
   return (
-    <div className="dev-bar">
-      <span className="dev-hint">buy units below • drag matching units to merge</span>
-      <button className="dev-btn" type="button" onClick={grantIncome}>
-        ▶ NEXT WAVE — collect income (temp)
+    <div className="fight-dock">
+      <button className="candy-btn" type="button" onClick={startFight}>
+        ⚔ FIGHT
       </button>
     </div>
   )
 }
 
+function BannerOverlay() {
+  const banner = useGameStore((s) => s.banner)
+  const clearBanner = useGameStore((s) => s.clearBanner)
+  useEffect(() => {
+    if (!banner) return
+    const t = window.setTimeout(clearBanner, 1800)
+    return () => window.clearTimeout(t)
+  }, [banner, clearBanner])
+
+  if (!banner) return null
+  return (
+    <div className="banner-overlay">
+      <div className={`banner ${banner}`}>
+        {banner === 'win' ? 'VICTORY' : 'DEFEAT'}
+      </div>
+    </div>
+  )
+}
+
+function BattleStrip() {
+  return <div className="battle-strip">⚔ BATTLE IN PROGRESS</div>
+}
+
 export default function App() {
+  const phase = useGameStore((s) => s.phase)
   return (
     <div className="game-stage">
       <TopHud />
@@ -58,13 +83,14 @@ export default function App() {
         >
           <color attach="background" args={['#caa06a']} />
           <Arena />
-          <Board />
+          {phase === 'prep' ? <Board /> : <CombatSim />}
         </Canvas>
 
-        <DevBar />
+        {phase === 'prep' && <FightDock />}
+        <BannerOverlay />
       </div>
 
-      <Shop />
+      {phase === 'prep' ? <Shop /> : <BattleStrip />}
     </div>
   )
 }

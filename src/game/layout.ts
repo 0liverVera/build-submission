@@ -32,6 +32,11 @@ export function slotPos(ref: SlotRef): [number, number, number] {
   return [p.x, BOARD_Y, p.z]
 }
 
+/** Enemy starting positions — the player's grid mirrored into the far (-z) half. */
+export function enemySlotPos(i: number): [number, number, number] {
+  return [COLS_X[i % 3], BOARD_Y, -ROWS_Z[Math.floor(i / 3)]]
+}
+
 /** Nearest slot to a point on the board plane — used to resolve a drop target. */
 export function nearestSlot(x: number, z: number): SlotRef {
   let best = SLOTS[0]
