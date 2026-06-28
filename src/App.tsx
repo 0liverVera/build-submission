@@ -6,6 +6,7 @@ import CombatSim from './three/CombatSim'
 import Shop from './ui/Shop'
 import { useGameStore } from './game/store'
 import { isBossWave } from './game/enemies'
+import { MODIFIERS } from './game/modifiers'
 
 /**
  * Phase 5 shell: prep → fight → (win advances wave / lose costs a life) → on 0
@@ -100,6 +101,46 @@ function BattleStrip() {
   return <div className="battle-strip">⚔ BATTLE IN PROGRESS</div>
 }
 
+function ModifierChip() {
+  const modId = useGameStore((s) => s.modifier)
+  const m = MODIFIERS[modId]
+  return (
+    <div className="modifier-chip" style={{ borderColor: m.color }}>
+      <span className="mc-icon">{m.icon}</span>
+      <div className="mc-text">
+        <div className="mc-name" style={{ color: m.color }}>
+          {m.name}
+        </div>
+        <div className="mc-desc">{m.desc}</div>
+      </div>
+    </div>
+  )
+}
+
+function ModifierAnnounce() {
+  const id = useGameStore((s) => s.modifierAnnounce)
+  const clear = useGameStore((s) => s.clearModifierAnnounce)
+  useEffect(() => {
+    if (!id) return
+    const t = window.setTimeout(clear, 1900)
+    return () => window.clearTimeout(t)
+  }, [id, clear])
+  if (!id) return null
+  const m = MODIFIERS[id]
+  return (
+    <div className="banner-overlay">
+      <div
+        className="mod-announce"
+        style={{ background: `linear-gradient(180deg, ${m.color} 0%, #2a1a0e 160%)` }}
+      >
+        <div className="ma-icon">{m.icon}</div>
+        <div className="ma-name">{m.name}</div>
+        <div className="ma-desc">{m.desc}</div>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const phase = useGameStore((s) => s.phase)
   return (
@@ -119,8 +160,10 @@ export default function App() {
           {phase === 'fight' && <CombatSim />}
         </Canvas>
 
+        {phase === 'prep' && <ModifierChip />}
         {phase === 'prep' && <FightDock />}
         <BannerOverlay />
+        <ModifierAnnounce />
         {phase === 'gameover' && <GameOverOverlay />}
       </div>
 

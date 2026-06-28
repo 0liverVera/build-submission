@@ -6,6 +6,7 @@ import UnitMesh from './UnitMesh'
 import { useGameStore } from '../game/store'
 import { UNIT_DEFS } from '../game/units'
 import { generateEnemyTeam, type EnemySeed } from '../game/enemies'
+import type { ModifierId } from '../game/modifiers'
 import { BOARD_Y, slotPos, enemySlotPos } from '../game/layout'
 import type { UnitType, Level } from '../game/types'
 import { sfx } from '../game/sfx'
@@ -15,6 +16,11 @@ const HEAL_BASE = 26
 const MAX_FIGHT_TIME = 24
 const SLAM_RADIUS = 3.2
 const SLAM_COOLDOWN = 3.4
+const SPIKE_DMG = 14
+const MELEE_RANGE = 1.5
+const RANGED_RANGE = 3.0
+
+type Team = 'player' | 'enemy' | 'neutral'
 
 interface Profile {
   atk: number
@@ -31,7 +37,7 @@ const PROFILE: Record<UnitType, Profile> = {
 
 interface Combatant {
   id: string
-  team: 'player' | 'enemy'
+  team: Team
   type: UnitType
   level: Level
   hp: number
@@ -43,6 +49,7 @@ interface Combatant {
   heal: boolean
   healAmt: number
   isBoss: boolean
+  isLion: boolean
   slamCd: number
   scaleMul: number
   pos: THREE.Vector3
@@ -57,33 +64,11 @@ interface Combatant {
 
 let _cid = 0
 
-function makeCombatant(
-  src: { type: UnitType; level: Level; boss?: boolean },
-  team: 'player' | 'enemy',
-  pos: [number, number, number],
-  wave: number,
-): Combatant {
-  const base = {
-    id: 'c' + ++_cid,
-    team,
-    type: src.type,
-    level: src.level,
-    pos: new THREE.Vector3(pos[0], BOARD_Y, pos[2]),
-    targetId: null,
-    cooldown: Math.random() * 0.4,
-    alive: true,
-    deathT: -1,
-    hitT: 0,
-    group: null as THREE.Group | null,
-    hpFill: null as THREE.Mesh | null,
-  }
-
+function baseStats(src: { type: UnitType; level: Level; boss?: boolean }, wave: number) {
   if (src.boss) {
     const hp = Math.round(1700 * (1 + Math.max(0, wave - 5) * 0.12))
     return {
-      ...base,
       maxHp: hp,
-      hp,
       dmg: Math.round(40 + wave * 2),
       range: 1.7,
       atkInterval: 1.3,
@@ -95,14 +80,11 @@ function makeCombatant(
       scaleMul: 1.95,
     }
   }
-
   const def = UNIT_DEFS[src.type]
   const m = LEVEL_MULT[src.level - 1]
   const prof = PROFILE[src.type]
   return {
-    ...base,
     maxHp: Math.round(def.hp * m),
-    hp: Math.round(def.hp * m),
     dmg: Math.round(def.dmg * m),
     range: def.range,
     atkInterval: prof.atk,
@@ -113,6 +95,88 @@ function makeCombatant(
     slamCd: 0,
     scaleMul: 1,
   }
+}
+
+function makeCombatant(
+  src: { type: UnitType; level: Level; boss?: boolean },
+  team: Team,
+  pos: [number, number, number],
+  wave: number,
+  modifier: ModifierId,
+): Combatant {
+  const s = baseStats(src, wave)
+  let { maxHp, dmg } = s
+  // Arena modifiers applied at creation
+  if (modifier === 'bloodmoon') {
+    maxHp = Math.round(maxHp * 0.75)
+    dmg = Math.round(dmg * 1.25)
+  }
+  if (modifier === 'blessing' && s.range >= RANGED_RANGE) {
+    dmg = Math.round(dmg * 1.3)
+  }
+  return {
+    id: 'c' + ++_cid,
+    team,
+    type: src.type,
+    level: src.level,
+    maxHp,
+    hp: maxHp,
+    dmg,
+    range: s.range,
+    atkInterval: s.atkInterval,
+    speed: s.speed,
+    heal: s.heal,
+    healAmt: s.healAmt,
+    isBoss: s.isBoss,
+    isLion: false,
+    slamCd: s.slamCd,
+    scaleMul: s.scaleMul,
+    pos: new THREE.Vector3(pos[0], BOARD_Y, pos[2]),
+    targetId: null,
+    cooldown: Math.random() * 0.4,
+    alive: true,
+    deathT: -1,
+    hitT: 0,
+    group: null,
+    hpFill: null,
+  }
+}
+
+function makeLion(wave: number): Combatant {
+  return {
+    id: 'lion' + ++_cid,
+    team: 'neutral',
+    type: 'brute',
+    level: 1,
+    maxHp: 999999,
+    hp: 999999,
+    dmg: Math.round(24 + wave),
+    range: 1.5,
+    atkInterval: 0.9,
+    speed: 2.7,
+    heal: false,
+    healAmt: 0,
+    isBoss: false,
+    isLion: true,
+    slamCd: 0,
+    scaleMul: 1.6,
+    pos: new THREE.Vector3(0, BOARD_Y, 0),
+    targetId: null,
+    cooldown: 0.6,
+    alive: true,
+    deathT: -1,
+    hitT: 0,
+    group: null,
+    hpFill: null,
+  }
+}
+
+/** Who a combatant will attack. Player/enemy ignore the neutral Lion; the Lion
+ *  attacks everyone; teams attack their opposite. */
+function hostile(c: Combatant, o: Combatant): boolean {
+  if (!o.alive) return false
+  if (c.team === 'neutral') return o.team !== 'neutral'
+  return o.team !== c.team && o.team !== 'neutral'
 }
 
 interface FloatNum {
@@ -139,6 +203,57 @@ function Crown() {
   )
 }
 
+function LionMesh() {
+  const TAN = '#e0a64b'
+  const MANE = '#a65f24'
+  const DARK = '#6b4226'
+  const legs: [number, number][] = [
+    [-0.24, 0.4],
+    [0.24, 0.4],
+    [-0.24, -0.4],
+    [0.24, -0.4],
+  ]
+  return (
+    <group>
+      <mesh position={[0, 0.46, 0]} castShadow>
+        <boxGeometry args={[0.72, 0.5, 1.1]} />
+        <meshStandardMaterial color={TAN} />
+      </mesh>
+      {legs.map(([x, z], i) => (
+        <mesh key={i} position={[x, 0.18, z]} castShadow>
+          <cylinderGeometry args={[0.1, 0.1, 0.36, 8]} />
+          <meshStandardMaterial color={DARK} />
+        </mesh>
+      ))}
+      {/* mane (behind), head, muzzle (front) */}
+      <mesh position={[0, 0.64, 0.48]} castShadow>
+        <sphereGeometry args={[0.43, 16, 16]} />
+        <meshStandardMaterial color={MANE} />
+      </mesh>
+      <mesh position={[0, 0.64, 0.66]} castShadow>
+        <sphereGeometry args={[0.3, 16, 16]} />
+        <meshStandardMaterial color={TAN} />
+      </mesh>
+      <mesh position={[0, 0.6, 0.86]} castShadow>
+        <sphereGeometry args={[0.16, 12, 12]} />
+        <meshStandardMaterial color="#f0c97a" />
+      </mesh>
+      <mesh position={[-0.16, 0.95, 0.5]}>
+        <coneGeometry args={[0.08, 0.14, 8]} />
+        <meshStandardMaterial color={MANE} />
+      </mesh>
+      <mesh position={[0.16, 0.95, 0.5]}>
+        <coneGeometry args={[0.08, 0.14, 8]} />
+        <meshStandardMaterial color={MANE} />
+      </mesh>
+      <mesh position={[0, 0.52, -0.64]} rotation={[0.6, 0, 0]}>
+        <cylinderGeometry args={[0.04, 0.04, 0.5, 6]} />
+        <meshStandardMaterial color={TAN} />
+      </mesh>
+    </group>
+  )
+}
+
 function CombatUnit({ c }: { c: Combatant }) {
   const g = useRef<THREE.Group>(null)
   const fill = useRef<THREE.Mesh>(null)
@@ -155,19 +270,25 @@ function CombatUnit({ c }: { c: Combatant }) {
       rotation={[0, c.team === 'player' ? Math.PI : 0, 0]}
     >
       <group scale={c.scaleMul}>
-        <UnitMesh type={c.type} level={c.level} team={c.team} pop={false} />
+        {c.isLion ? (
+          <LionMesh />
+        ) : (
+          <UnitMesh type={c.type} level={c.level} team={c.team as 'player' | 'enemy'} pop={false} />
+        )}
         {c.isBoss && <Crown />}
       </group>
-      <Billboard position={[0, c.isBoss ? 3.7 : 2.05, 0]}>
-        <mesh position={[0, 0, -0.002]}>
-          <planeGeometry args={[barW + 0.04, 0.18]} />
-          <meshBasicMaterial color="#2a1a0e" />
-        </mesh>
-        <mesh ref={fill}>
-          <planeGeometry args={[barW, 0.12]} />
-          <meshBasicMaterial color={barColor} />
-        </mesh>
-      </Billboard>
+      {!c.isLion && (
+        <Billboard position={[0, c.isBoss ? 3.7 : 2.05, 0]}>
+          <mesh position={[0, 0, -0.002]}>
+            <planeGeometry args={[barW + 0.04, 0.18]} />
+            <meshBasicMaterial color="#2a1a0e" />
+          </mesh>
+          <mesh ref={fill}>
+            <planeGeometry args={[barW, 0.12]} />
+            <meshBasicMaterial color={barColor} />
+          </mesh>
+        </Billboard>
+      )}
     </group>
   )
 }
@@ -196,11 +317,18 @@ function ShockRing({ pos, onDone }: { pos: [number, number, number]; onDone: () 
 }
 
 export default function CombatSim() {
+  const modifierRef = useRef<ModifierId>('none')
+
   const combatants = useMemo(() => {
     const st = useGameStore.getState()
+    const modifier = st.modifier
+    modifierRef.current = modifier
     const list: Combatant[] = []
     st.board.forEach((u, i) => {
-      if (u) list.push(makeCombatant(u, 'player', slotPos({ area: 'board', index: i }), st.wave))
+      if (u)
+        list.push(
+          makeCombatant(u, 'player', slotPos({ area: 'board', index: i }), st.wave, modifier),
+        )
     })
     const enemies: EnemySeed[] = generateEnemyTeam(st.wave)
     const addOrder = [1, 3, 5, 7, 0, 2, 6, 8]
@@ -209,8 +337,9 @@ export default function CombatSim() {
       const pos = e.boss
         ? enemySlotPos(4)
         : enemySlotPos(addOrder[ai++ % addOrder.length])
-      list.push(makeCombatant(e, 'enemy', pos, st.wave))
+      list.push(makeCombatant(e, 'enemy', pos, st.wave, modifier))
     })
+    if (modifier === 'lion') list.push(makeLion(st.wave))
     return list
   }, [])
 
@@ -239,25 +368,42 @@ export default function CombatSim() {
   }, [])
 
   const timer = useRef(0)
+  const spikeAccum = useRef(0)
   const resolved = useRef(false)
   const tmp = useMemo(() => new THREE.Vector3(), [])
 
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05)
     timer.current += dt
+    const modifier = modifierRef.current
+
+    // Spiked Floor: melee units bleed HP once per second
+    if (modifier === 'spikes') {
+      spikeAccum.current += dt
+      if (spikeAccum.current >= 1) {
+        spikeAccum.current -= 1
+        for (const c of combatants) {
+          if (c.alive && !c.isLion && c.range <= MELEE_RANGE) {
+            c.hp -= SPIKE_DMG
+            c.hitT = Math.max(c.hitT, 0.1)
+            spawnDmg([c.pos.x, BOARD_Y + 2.0, c.pos.z], String(SPIKE_DMG), '#d98a3a')
+          }
+        }
+      }
+    }
 
     for (const c of combatants) {
       if (!c.alive) continue
       c.cooldown -= dt
       if (c.hitT > 0) c.hitT -= dt
 
-      // Boss ground-slam: AoE around the boss hitting nearby opponents
+      // Boss ground-slam: AoE around the boss
       if (c.isBoss) {
         c.slamCd -= dt
         if (c.slamCd <= 0) {
           let hitAny = false
           for (const o of combatants) {
-            if (o.alive && o.team !== c.team && c.pos.distanceTo(o.pos) <= SLAM_RADIUS) {
+            if (o.alive && hostile(c, o) && c.pos.distanceTo(o.pos) <= SLAM_RADIUS) {
               const sd = Math.round(c.dmg * 1.6)
               o.hp -= sd
               o.hitT = 0.22
@@ -300,12 +446,13 @@ export default function CombatSim() {
         continue
       }
 
+      // Targeting
       let target = c.targetId ? byId.get(c.targetId) : undefined
-      if (!target || !target.alive) {
+      if (!target || !target.alive || !hostile(c, target)) {
         let nearest: Combatant | null = null
         let nd = Infinity
         for (const o of combatants) {
-          if (o.alive && o.team !== c.team) {
+          if (hostile(c, o)) {
             const d = c.pos.distanceToSquared(o.pos)
             if (d < nd) {
               nd = d
@@ -329,7 +476,7 @@ export default function CombatSim() {
           tmp.subVectors(target.pos, c.pos).setY(0)
           if (tmp.lengthSq() > 1e-6) {
             tmp.normalize()
-            target.pos.addScaledVector(tmp, target.isBoss ? 0.03 : 0.16)
+            target.pos.addScaledVector(tmp, target.isBoss || target.isLion ? 0.03 : 0.16)
           }
           spawnDmg([target.pos.x, BOARD_Y + 2.2, target.pos.z], String(dmg), '#ff5a48')
           sfx.hit()

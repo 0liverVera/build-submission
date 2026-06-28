@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { UnitInstance, UnitType, Level, SlotRef } from './types'
 import { slotPos, BOARD_Y } from './layout'
 import { UNIT_TYPES, UNIT_DEFS } from './units'
+import { type ModifierId, rollModifierId } from './modifiers'
 import { sfx } from './sfx'
 
 let _id = 0
@@ -58,6 +59,9 @@ function initialRun() {
     wave: 1,
     phase: 'prep' as Phase,
     banner: null as FightResult | null,
+    // Wave 1 is a clean intro; modifiers start rolling from wave 2.
+    modifier: 'none' as ModifierId,
+    modifierAnnounce: null as ModifierId | null,
     bursts: [] as Burst[],
     kickAt: 0,
     kickPower: 0,
@@ -82,6 +86,8 @@ interface GameState {
   bestWave: number
   phase: Phase
   banner: FightResult | null
+  modifier: ModifierId
+  modifierAnnounce: ModifierId | null
   bursts: Burst[]
   kickAt: number
   kickPower: number
@@ -93,6 +99,7 @@ interface GameState {
   startFight: () => void
   finishFight: (result: FightResult) => void
   clearBanner: () => void
+  clearModifierAnnounce: () => void
   restart: () => void
   removeBurst: (id: string) => void
   triggerShake: (power: number) => void
@@ -191,7 +198,14 @@ export const useGameStore = create<GameState>((set, get) => ({
       sfx.deny()
       return
     }
-    set({ phase: 'fight', banner: null, kickAt: performance.now(), kickPower: 0.22 })
+    set({
+      phase: 'fight',
+      banner: null,
+      // Announce the active modifier with a big banner as the fight starts.
+      modifierAnnounce: s.modifier === 'none' ? null : s.modifier,
+      kickAt: performance.now(),
+      kickPower: 0.22,
+    })
     sfx.fight()
   },
 
@@ -205,7 +219,15 @@ export const useGameStore = create<GameState>((set, get) => ({
       wave += 1
       const best = Math.max(s.bestWave, wave)
       saveBest(best)
-      set({ phase: 'prep', banner: 'win', coins, wave, bestWave: best, shop: rollShopArr() })
+      set({
+        phase: 'prep',
+        banner: 'win',
+        coins,
+        wave,
+        bestWave: best,
+        shop: rollShopArr(),
+        modifier: rollModifierId(), // roll the next wave's arena rule
+      })
       sfx.win()
       return
     }
@@ -220,11 +242,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       sfx.lose()
       return
     }
-    set({ phase: 'prep', banner: 'lose', coins, lives, shop: rollShopArr() })
+    set({
+      phase: 'prep',
+      banner: 'lose',
+      coins,
+      lives,
+      shop: rollShopArr(),
+      modifier: rollModifierId(), // re-roll the arena rule for the retry
+    })
     sfx.lose()
   },
 
   clearBanner: () => set({ banner: null }),
+  clearModifierAnnounce: () => set({ modifierAnnounce: null }),
 
   restart: () => set({ ...initialRun() }),
 
