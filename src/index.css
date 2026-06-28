@@ -601,6 +601,13 @@ body {
   font-size: 11px;
   color: var(--gold);
 }
+.sb-shot.low {
+  color: #fff;
+  background: var(--danger);
+  padding: 1px 5px;
+  border-radius: 5px;
+  animation: clockPulse 0.5s ease-in-out infinite;
+}
 
 .court-body {
   position: relative;

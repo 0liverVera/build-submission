@@ -89,8 +89,10 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
     const st0 = useGame.getState()
     const starters = (st0.franchise?.roster ?? []).slice(0, 5)
     const homeShoot = starters.length ? starters.reduce((a, p) => a + p.shooting, 0) / starters.length : 6
+    const avgMorale = starters.length ? starters.reduce((a, p) => a + p.morale, 0) / starters.length : 60
     const opp0 = matchMode ? st0.currentOpponent() : null
-    const homeShootF = 0.82 + homeShoot * 0.03
+    // team morale nudges your shooting up/down
+    const homeShootF = (0.82 + homeShoot * 0.03) * (0.9 + avgMorale * 0.0016)
     const awayShootF = 0.82 + (opp0?.offense ?? 6) * 0.03
     const homeAbbr = (st0.franchise?.teamName ?? 'HOM').slice(0, 3).toUpperCase()
     const awayAbbr = opp0?.abbr ?? 'OPP'
@@ -101,7 +103,7 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
 
     // match clock / score
-    const QUARTER_SECONDS = 80
+    const QUARTER_SECONDS = 60
     const SHOT_CLOCK = 20
     let us = 0
     let them = 0
@@ -278,13 +280,14 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
     }
 
     function resolveShotFlight() {
+      const clutch = matchMode && quarter === 4 && gameClock <= 10 && Math.abs(us - them) <= 7
       if (made) {
         const pts = shotKind === '3' ? 3 : 2
         if (possession === 'home') us += pts
         else them += pts
         netFlash = 0.45
         netSwish = 0.5
-        crowdJump = 0.6
+        crowdJump = clutch ? 0.85 : 0.6
         ball.x = rimX
         ball.y = rimY
         ball.z = 0
@@ -294,15 +297,15 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
           dunk ? sfx.dunk() : sfx.make()
           shake = Math.max(shake, dunk ? 9 : 4)
         } else if (shotKind === '3') {
-          result('SWISH · 3!', 'three')
+          result(clutch ? 'CLUTCH 3!!' : 'SWISH · 3!', 'three')
           sfx.three()
           sfx.swish()
-          shake = Math.max(shake, 8)
+          shake = Math.max(shake, clutch ? 13 : 8)
         } else {
-          result('BUCKET!', 'make')
+          result(clutch ? 'CLUTCH BUCKET!' : 'BUCKET!', 'make')
           sfx.make()
           sfx.swish()
-          shake = Math.max(shake, 4)
+          shake = Math.max(shake, clutch ? 10 : 4)
         }
       } else {
         result('MISS', 'miss')
@@ -396,7 +399,7 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       if (phase === 'live' && now > awayStealAt) {
         awayStealAt = now + 1.3 + Math.random() * 1.6
         const def = away[active % away.length]
-        if (dist(def.x, def.y, home[active].x, home[active].y) < pr * 2.1 && Math.random() < 0.18) {
+        if (dist(def.x, def.y, home[active].x, home[active].y) < pr * 2.1 && Math.random() < 0.14) {
           result('STOLEN!', 'miss')
           sfx.aww()
           flipToAway(active % away.length)
@@ -514,7 +517,7 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
     function doSteal() {
       if (stealCd > 0) return
       const d = dist(home[active].x, home[active].y, away[awayHandler].x, away[awayHandler].y)
-      if (d < pr * 2.7 && Math.random() < 0.5) {
+      if (d < pr * 2.7 && Math.random() < 0.42) {
         possession = 'home'
         setOnDefense(false)
         phase = 'live'
@@ -562,6 +565,8 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
 
     function endGame() {
       ended = true
+      sfx.buzzer()
+      if (us > them) sfx.three()
       setFinal({ us, them, win: us > them })
     }
     function pushHud() {
@@ -602,6 +607,7 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
             else {
               quarter += 1
               gameClock = QUARTER_SECONDS
+              sfx.buzzer()
             }
           }
         }
@@ -911,8 +917,12 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
     let last = performance.now()
     function frame(time: number) {
       now = time / 1000
-      const dt = Math.min(0.034, (time - last) / 1000)
+      let dt = Math.min(0.034, (time - last) / 1000)
       last = time
+      // buzzer-beater slow-mo: Q4, final seconds, close, ball in the air
+      if (matchMode && quarter === 4 && gameClock <= 8 && Math.abs(us - them) <= 6 && phase === 'shooting') {
+        dt *= 0.4
+      }
       update(dt)
       render()
       if (matchMode) pushHud()
@@ -1006,7 +1016,7 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
           <div className="sb-center">
             <span className="sb-q">Q{hud.quarter}</span>
             <span className={`sb-clock${hud.clock <= 10 ? ' clutch' : ''}`}>{mmss(hud.clock)}</span>
-            <span className="sb-shot">:{hud.shot}</span>
+            <span className={`sb-shot${hud.shot <= 5 ? ' low' : ''}`}>:{hud.shot}</span>
           </div>
           <div className="sb-team opp" style={{ ['--p']: oppColorUi } as React.CSSProperties}>
             <span className="sb-score">{hud.them}</span>
