@@ -94,6 +94,8 @@ export default function Court5v5() {
     const ball = { x: 0, y: 0, z: 0, t: 0, dur: 0.7, peak: 60 }
     let possession: 'home' | 'away' = 'home'
     let awayHandler = 0
+    let awayPossStart = 0
+    let awayThinkAt = 0
     let stealCd = 0
     let blockUntil = 0
     let phase: 'live' | 'passing' | 'shooting' | 'resolved' = 'live'
@@ -153,9 +155,9 @@ export default function Court5v5() {
       })
     }
 
-    const nearestAwayDist = (p: P) => {
+    const nearestDist = (p: P, arr: P[]) => {
       let best = Infinity
-      for (const d of away) best = Math.min(best, dist(p.x, p.y, d.x, d.y))
+      for (const d of arr) best = Math.min(best, dist(p.x, p.y, d.x, d.y))
       return best
     }
     const timingFactor = (c: number) => {
@@ -163,11 +165,11 @@ export default function Court5v5() {
       const dd = Math.min(Math.abs(c - 0.78), Math.abs(c - 0.95))
       return Math.max(0.6, 1.18 - dd * 1.6)
     }
-    function shotInfo(p: P) {
+    function shotInfo(p: P, defenders: P[]) {
       const d = dist(p.x, p.y, rimX, rimY)
       const layup = d < pr * 4.2
       const three = !layup && d > arcR
-      const open = nearestAwayDist(p) > pr * 4
+      const open = nearestDist(p, defenders) > pr * 4
       const baseP = layup ? 0.8 : three ? 0.42 : 0.56
       return { d, layup, three, open, baseP }
     }
@@ -177,7 +179,7 @@ export default function Court5v5() {
       let score = -Infinity
       home.forEach((p, i) => {
         if (i === active) return
-        const s = nearestAwayDist(p) + (p.x - home[active].x) * 0.3
+        const s = nearestDist(p, away) + (p.x - home[active].x) * 0.3
         if (s > score) {
           score = s
           best = i
@@ -201,7 +203,7 @@ export default function Court5v5() {
 
     function doShoot(c: number) {
       const a = home[active]
-      const info = shotInfo(a)
+      const info = shotInfo(a, away)
       shotKind = info.layup ? 'layup' : info.three ? '3' : '2'
       let prob = info.baseP * (info.open ? 1.12 : 0.62) * timingFactor(c)
       prob = clamp(prob, 0.05, 0.96)
@@ -298,9 +300,86 @@ export default function Court5v5() {
       }
     }
 
-    // Step 4: minimal away offense — ball handler evades, others hold spots.
-    function runAwayOffense(dt: number) {
+    function flipToHome() {
+      possession = 'home'
+      active = 0
+      setOnDefense(false)
+      phase = 'live'
+    }
+
+    function awayPass(target: number) {
+      awayHandler = target
+      sfx.pass()
+    }
+
+    function awayShoot() {
       const bh = away[awayHandler]
+      // a well-timed BLOCK by the active defender stuffs it
+      const contestD = dist(home[active].x, home[active].y, bh.x, bh.y)
+      if (contestD < pr * 2.7 && now < blockUntil) {
+        result('BLOCKED!', 'miss')
+        sfx.block()
+        crowdJump = 0.6
+        shake = Math.max(shake, 7)
+        flipToHome()
+        return
+      }
+      const info = shotInfo(bh, home)
+      shotKind = info.layup ? 'layup' : info.three ? '3' : '2'
+      let prob = info.baseP * (info.open ? 1.05 : 0.55) * (contestD < pr * 3 ? 0.62 : 1)
+      prob = clamp(prob, 0.05, 0.92)
+      made = Math.random() < prob
+      shotFrom.x = bh.x
+      shotFrom.y = bh.y
+      ball.x = bh.x
+      ball.y = bh.y
+      ball.z = 0
+      ball.t = 0
+      ball.dur = info.layup ? 0.45 : 0.72
+      ball.peak = info.layup ? H * 0.12 : clamp(info.d * 0.26, H * 0.14, H * 0.4)
+      if (made) {
+        land.x = rimX
+        land.y = rimY
+      } else {
+        land.x = rimX + (Math.random() * 2 - 1) * pr * 1.3
+        land.y = rimY + (Math.random() * 2 - 1) * pr * 1.3
+      }
+      phase = 'shooting'
+      sfx.shoot()
+    }
+
+    // Step 5: opponent offense — drive, decide pass/shoot vs your defense.
+    function runAwayOffenseAI(dt: number) {
+      const bh = away[awayHandler]
+      const openD = nearestDist(bh, home)
+      const d2 = dist(bh.x, bh.y, rimX, rimY)
+      if (now > awayThinkAt) {
+        awayThinkAt = now + 0.35
+        const elapsed = now - awayPossStart
+        if (d2 < pr * 3.8 || elapsed > 6) {
+          awayShoot()
+          return
+        }
+        if (openD > pr * 4.6 && d2 < arcR * 1.05 && Math.random() < 0.55) {
+          awayShoot()
+          return
+        }
+        let best = -1
+        let bs = openD + pr * 1.8
+        for (let i = 0; i < away.length; i++) {
+          if (i === awayHandler) continue
+          const od = nearestDist(away[i], home)
+          if (od > bs) {
+            bs = od
+            best = i
+          }
+        }
+        if (best >= 0 && Math.random() < 0.5) {
+          awayPass(best)
+          return
+        }
+      }
+      // drive toward the rim, drifting around a defender in the way
       let nd = Infinity
       let near: P | null = null
       for (const h of home) {
@@ -310,13 +389,9 @@ export default function Court5v5() {
           near = h
         }
       }
-      if (near && nd < pr * 5) {
-        const ex = bh.x - near.x
-        const ey = bh.y - near.y
-        const el = Math.hypot(ex, ey) || 1
-        bh.x = clamp(bh.x + (ex / el) * AISPEED * 0.7 * dt, W * 0.05, W * 0.95)
-        bh.y = clamp(bh.y + (ey / el) * AISPEED * 0.7 * dt, band + pr, H - band - pr)
-      }
+      let ty = rimY
+      if (near && nd < pr * 2.4) ty += (bh.y < rimY ? -1 : 1) * pr * 2
+      steerTo(bh, rimX - pr * 2, ty, AISPEED * 0.95, dt)
       for (let i = 0; i < away.length; i++) {
         if (i === awayHandler) continue
         steerTo(away[i], AWAY[i][0] * W, AWAY[i][1] * H, AISPEED * 0.8, dt)
@@ -402,16 +477,16 @@ export default function Court5v5() {
         c.steal = false
         c.block = false
       } else {
-        runAwayOffense(dt)
         runHomeDefenseAI(dt)
+        if (phase === 'live') runAwayOffenseAI(dt)
         // defense intents
         if (c.switchD) {
           c.switchD = false
-          doSwitch()
+          if (phase === 'live') doSwitch()
         }
         if (c.steal) {
           c.steal = false
-          doSteal()
+          if (phase === 'live') doSteal()
         }
         if (c.block) {
           c.block = false
@@ -450,8 +525,11 @@ export default function Court5v5() {
         ball.z = 0
         result('', '')
         if (possession === 'home') {
+          // you shot → opponent ball, you play defense
           possession = 'away'
           awayHandler = 0
+          awayPossStart = now
+          awayThinkAt = now + 0.7
           let best = 0
           let bd = Infinity
           for (let i = 0; i < home.length; i++) {
@@ -463,6 +541,11 @@ export default function Court5v5() {
           }
           active = best
           setOnDefense(true)
+        } else {
+          // opponent shot → your ball, you attack
+          possession = 'home'
+          active = 0
+          setOnDefense(false)
         }
         phase = 'live'
       }
@@ -600,7 +683,7 @@ export default function Court5v5() {
         ctx!.fillStyle = '#ffcf4a'
         ctx!.fillRect(bx, by, bw * clamp(charge, 0, 1), 7)
         // make %
-        const info = shotInfo(a)
+        const info = shotInfo(a, away)
         const prob = clamp(info.baseP * (info.open ? 1.12 : 0.62) * timingFactor(charge), 0.05, 0.96)
         ctx!.fillStyle = '#fff'
         ctx!.font = 'bold 13px system-ui'
