@@ -446,6 +446,14 @@ body {
   color: var(--ink);
   box-shadow: 0 5px 0 #a8470f;
 }
+.nav-card.beta {
+  background: linear-gradient(180deg, #3aa0a0 0%, #2dd4bf 60%, #1f8a7a 100%);
+  color: var(--ink);
+  box-shadow: 0 4px 0 #15695d;
+}
+.nav-card.beta:active {
+  box-shadow: 0 2px 0 #15695d;
+}
 .nav-card.play:active {
   box-shadow: 0 2px 0 #a8470f;
 }

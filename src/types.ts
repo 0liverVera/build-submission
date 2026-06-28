@@ -109,3 +109,4 @@ export type Screen =
   | 'press'
   | 'store'
   | 'teameditor'
+  | 'practice'

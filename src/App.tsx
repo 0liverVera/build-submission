@@ -10,6 +10,7 @@ import Offseason from './screens/Offseason'
 import Store from './screens/Store'
 import TeamEditor from './screens/TeamEditor'
 import GameScreen from './court/GameScreen'
+import Court5v5 from './court/Court5v5'
 import RotateGate from './ui/RotateGate'
 import { useEffect, useState } from 'react'
 import { playTrack, setMusicMuted } from './audio/music'
@@ -86,6 +87,7 @@ export default function App() {
       {screen === 'press' && <Press />}
       {screen === 'store' && <Store />}
       {screen === 'teameditor' && <TeamEditor />}
+      {screen === 'practice' && <Court5v5 />}
       <Toast />
     </div>
   )
