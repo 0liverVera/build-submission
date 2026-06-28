@@ -723,6 +723,8 @@ body {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  /* keep the court (and both hoops) clear of the iPhone notch / home bar */
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 .court-canvas {
   display: block;

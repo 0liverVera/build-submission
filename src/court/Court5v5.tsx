@@ -3,13 +3,9 @@ import { useGame } from '../state/store'
 import { sfx } from '../audio/sfx'
 
 /**
- * GAMEPLAY OVERHAUL — controllable 5v5 (BETA). Season games still use the old
- * model; this is sandboxed behind the 5v5 BETA hub entry.
- *
- * STEP 1: left joystick moves the active player.
- * STEP 2: right-side OFFENSE buttons — Pass (control switches to the receiver),
- *   charge-meter Shoot (auto-aimed at the rim; timing + openness + distance set
- *   the make %), and Sprint (stamina). Teammates are still static (AI = step 3).
+ * Full-court controllable 5v5. HOME attacks the RIGHT hoop, AWAY attacks the
+ * LEFT hoop; each defends its own basket. Left joystick moves the active player;
+ * the right button cluster swaps between offense and defense.
  */
 
 interface P {
@@ -17,25 +13,20 @@ interface P {
   y: number
   team: 'home' | 'away'
 }
+type Team = 'home' | 'away'
 
-const HOME: [number, number][] = [
-  [0.2, 0.5],
-  [0.38, 0.24],
-  [0.38, 0.76],
-  [0.54, 0.4],
-  [0.56, 0.62],
-]
-const AWAY: [number, number][] = [
-  [0.34, 0.5],
-  [0.52, 0.26],
-  [0.52, 0.74],
-  [0.66, 0.42],
-  [0.68, 0.6],
+// Offensive spots relative to the attacking rim (dx as a fraction of W toward
+// center court, dy as a fraction of H from center). PG / 2 wings / 2 posts.
+const SPOTS = [
+  [-0.3, 0.0],
+  [-0.22, -0.22],
+  [-0.22, 0.22],
+  [-0.13, -0.13],
+  [-0.13, 0.13],
 ]
 
 const dist = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by)
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
-/** Distance from point (px,py) to segment a→b — for pass-lane interceptions. */
 function segDist(px: number, py: number, ax: number, ay: number, bx: number, by: number) {
   const dx = bx - ax
   const dy = by - ay
@@ -85,13 +76,11 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // match context (ratings + scheduled opponent)
     const st0 = useGame.getState()
     const starters = (st0.franchise?.roster ?? []).slice(0, 5)
     const homeShoot = starters.length ? starters.reduce((a, p) => a + p.shooting, 0) / starters.length : 6
     const avgMorale = starters.length ? starters.reduce((a, p) => a + p.morale, 0) / starters.length : 60
     const opp0 = matchMode ? st0.currentOpponent() : null
-    // team morale nudges your shooting up/down
     const homeShootF = (0.82 + homeShoot * 0.03) * (0.9 + avgMorale * 0.0016)
     const awayShootF = 0.82 + (opp0?.offense ?? 6) * 0.03
     const homeAbbr = (st0.franchise?.teamName ?? 'HOM').slice(0, 3).toUpperCase()
@@ -99,41 +88,30 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
 
     const homeColor = franchise?.colorPrimary ?? '#ff8a3d'
     const awayColor = (matchMode && opp0?.color) || '#e8503a'
-    const logo = (franchise?.teamName?.[0] ?? 'H').toUpperCase()
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
-
-    // match clock / score
-    const QUARTER_SECONDS = 60
-    const SHOT_CLOCK = 20
-    let us = 0
-    let them = 0
-    let quarter = 1
-    let gameClock = QUARTER_SECONDS
-    let shotClock = SHOT_CLOCK
-    let ended = false
-    let prevPossession: 'home' | 'away' = 'home'
-    let lastHudKey = ''
 
     let W = 0
     let H = 0
-    let rimX = 0
+    let mx = 0 // court side margin
+    let leftRimX = 0
+    let rightRimX = 0
     let rimY = 0
     let arcR = 0
     let pr = 18
     let ballR = 10
     let band = 26
-    let SPEED = 300
-    let AISPEED = 230
+    let SPEED = 200
+    let AISPEED = 160
 
-    const home: P[] = HOME.map(() => ({ x: 0, y: 0, team: 'home' }))
-    // Teammate offense AI: each holds a base spot + occasionally cuts to the rim.
-    const cutUntil = new Array(5).fill(0)
-    let nextCutAt = 0
-    const away: P[] = AWAY.map(() => ({ x: 0, y: 0, team: 'away' }))
+    const home: P[] = Array.from({ length: 5 }, () => ({ x: 0, y: 0, team: 'home' as Team }))
+    const away: P[] = Array.from({ length: 5 }, () => ({ x: 0, y: 0, team: 'away' as Team }))
     let active = 0
 
+    const cutUntil = new Array(5).fill(0)
+    let nextCutAt = 0
+
     const ball = { x: 0, y: 0, z: 0, t: 0, dur: 0.7, peak: 60 }
-    let possession: 'home' | 'away' = 'home'
+    let possession: Team = 'home'
     let awayHandler = 0
     let awayPossStart = 0
     let awayThinkAt = 0
@@ -151,17 +129,28 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
     let resolveAt = 0
     let t = 0
 
-    // shot/pass scratch
     const shotFrom = { x: 0, y: 0 }
     const land = { x: 0, y: 0 }
     let made = false
     let shotKind: '2' | '3' | 'layup' = '2'
+    let lastRimX = 0
     let passFrom = 0
     let passTo = 0
     let passT = 0
-    let passDur = 0.25
+    let passDur = 0.4
 
-    // joystick
+    // match clock / score
+    const QUARTER_SECONDS = 60
+    const SHOT_CLOCK = 20
+    let us = 0
+    let them = 0
+    let quarter = 1
+    let gameClock = QUARTER_SECONDS
+    let shotClock = SHOT_CLOCK
+    let ended = false
+    let prevPossession: Team = 'home'
+    let lastHudKey = ''
+
     let joyId: number | null = null
     let baseX = 0
     let baseY = 0
@@ -170,6 +159,14 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
     let maxR = 60
 
     const result = (text: string, kind: string) => setMsg({ text, kind })
+    const atkX = (team: Team) => (team === 'home' ? rightRimX : leftRimX)
+    const offSpot = (i: number, team: Team) => {
+      const rx = atkX(team)
+      const d = team === 'home' ? 1 : -1
+      return { x: rx + d * SPOTS[i][0] * W, y: H * 0.5 + SPOTS[i][1] * H }
+    }
+    const inX = (x: number) => clamp(x, mx + pr, W - mx - pr)
+    const inY = (y: number) => clamp(y, band + pr, H - band - pr)
 
     function layout() {
       const rect = canvas!.getBoundingClientRect()
@@ -178,22 +175,27 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       canvas!.width = Math.floor(W * dpr)
       canvas!.height = Math.floor(H * dpr)
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0)
-      rimX = W * 0.9
-      rimY = H * 0.5
-      arcR = Math.min(W * 0.52, H * 0.94)
-      pr = Math.max(12, H * 0.062)
-      ballR = pr * 0.55
       band = H * 0.07
-      SPEED = H * 1.15
-      AISPEED = SPEED * 0.78
+      mx = W * 0.035
+      rimY = H * 0.5
+      leftRimX = W * 0.1
+      rightRimX = W * 0.9
+      arcR = Math.min(W * 0.26, H * 0.86)
+      pr = Math.max(11, H * 0.058)
+      ballR = pr * 0.55
+      SPEED = H * 0.6
+      AISPEED = H * 0.5
       maxR = Math.min(W, H) * 0.12
+      // home sets up on the right (attacking right); away guards
       home.forEach((p, i) => {
-        p.x = HOME[i][0] * W
-        p.y = HOME[i][1] * H
+        const s = offSpot(i, 'home')
+        p.x = s.x
+        p.y = s.y
       })
       away.forEach((p, i) => {
-        p.x = AWAY[i][0] * W
-        p.y = AWAY[i][1] * H
+        const man = home[i]
+        p.x = man.x + (rightRimX - man.x) * 0.34
+        p.y = man.y + (rimY - man.y) * 0.34
       })
     }
 
@@ -207,8 +209,8 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       const dd = Math.min(Math.abs(c - 0.78), Math.abs(c - 0.95))
       return Math.max(0.6, 1.18 - dd * 1.6)
     }
-    function shotInfo(p: P, defenders: P[]) {
-      const d = dist(p.x, p.y, rimX, rimY)
+    function shotInfo(p: P, defenders: P[], rx: number) {
+      const d = dist(p.x, p.y, rx, rimY)
       const layup = d < pr * 4.2
       const three = !layup && d > arcR
       const open = nearestDist(p, defenders) > pr * 4
@@ -230,12 +232,35 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       return best
     }
 
+    function flipToHome() {
+      possession = 'home'
+      active = 0
+      setOnDefense(false)
+      phase = 'live'
+    }
+    function flipToAway(handlerIdx: number) {
+      possession = 'away'
+      awayHandler = handlerIdx
+      awayPossStart = now
+      awayThinkAt = now + 0.5
+      let best = 0
+      let bd = Infinity
+      for (let i = 0; i < home.length; i++) {
+        const d = dist(home[i].x, home[i].y, away[handlerIdx].x, away[handlerIdx].y)
+        if (d < bd) {
+          bd = d
+          best = i
+        }
+      }
+      active = best
+      setOnDefense(true)
+    }
+
     function doPass() {
       const target = bestPassTarget()
       if (target < 0) return
       const a = home[active]
       const b = home[target]
-      // a defender sitting in the lane can pick it off
       for (let i = 0; i < away.length; i++) {
         const d = away[i]
         if (segDist(d.x, d.y, a.x, a.y, b.x, b.y) < pr * 1.1 && Math.random() < 0.3) {
@@ -248,35 +273,60 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       passFrom = active
       passTo = target
       passT = 0
-      passDur = clamp(dist(a.x, a.y, b.x, b.y) / (W * 3), 0.16, 0.4)
+      passDur = clamp(dist(a.x, a.y, b.x, b.y) / (W * 1.1), 0.3, 0.7)
       phase = 'passing'
       sfx.pass()
     }
 
-    function doShoot(c: number) {
-      const a = home[active]
-      const info = shotInfo(a, away)
+    function launchShot(p: P, rx: number, info: ReturnType<typeof shotInfo>) {
       shotKind = info.layup ? 'layup' : info.three ? '3' : '2'
-      let prob = info.baseP * (info.open ? 1.12 : 0.62) * timingFactor(c) * homeShootF
-      prob = clamp(prob, 0.05, 0.96)
-      made = Math.random() < prob
-      shotFrom.x = a.x
-      shotFrom.y = a.y
-      ball.x = a.x
-      ball.y = a.y
+      lastRimX = rx
+      shotFrom.x = p.x
+      shotFrom.y = p.y
+      ball.x = p.x
+      ball.y = p.y
       ball.z = 0
       ball.t = 0
-      ball.dur = info.layup ? 0.45 : 0.72
+      ball.dur = info.layup ? 0.5 : 0.78
       ball.peak = info.layup ? H * 0.12 : clamp(info.d * 0.26, H * 0.14, H * 0.4)
       if (made) {
-        land.x = rimX
+        land.x = rx
         land.y = rimY
       } else {
-        land.x = rimX + (Math.random() * 2 - 1) * pr * 1.3
+        land.x = rx + (Math.random() * 2 - 1) * pr * 1.3
         land.y = rimY + (Math.random() * 2 - 1) * pr * 1.3
       }
       phase = 'shooting'
       sfx.shoot()
+    }
+
+    function doShoot(c: number) {
+      const a = home[active]
+      const rx = atkX('home')
+      const info = shotInfo(a, away, rx)
+      let prob = info.baseP * (info.open ? 1.12 : 0.62) * timingFactor(c) * homeShootF
+      prob = clamp(prob, 0.05, 0.96)
+      made = Math.random() < prob
+      launchShot(a, rx, info)
+    }
+
+    function awayShoot() {
+      const bh = away[awayHandler]
+      const rx = atkX('away')
+      const contestD = dist(home[active].x, home[active].y, bh.x, bh.y)
+      if (contestD < pr * 2.7 && now < blockUntil) {
+        result('BLOCKED!', 'miss')
+        sfx.block()
+        crowdJump = 0.6
+        shake = Math.max(shake, 7)
+        flipToHome()
+        return
+      }
+      const info = shotInfo(bh, home, rx)
+      let prob = info.baseP * (info.open ? 1.05 : 0.55) * (contestD < pr * 3 ? 0.62 : 1) * awayShootF
+      prob = clamp(prob, 0.05, 0.92)
+      made = Math.random() < prob
+      launchShot(bh, rx, info)
     }
 
     function resolveShotFlight() {
@@ -288,11 +338,11 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
         netFlash = 0.45
         netSwish = 0.5
         crowdJump = clutch ? 0.85 : 0.6
-        ball.x = rimX
+        ball.x = lastRimX
         ball.y = rimY
         ball.z = 0
         if (shotKind === 'layup') {
-          const dunk = dist(shotFrom.x, shotFrom.y, rimX, rimY) < pr * 2.6
+          const dunk = dist(shotFrom.x, shotFrom.y, lastRimX, rimY) < pr * 2.6
           result(dunk ? 'DUNK!' : 'LAYUP!', 'dunk')
           dunk ? sfx.dunk() : sfx.make()
           shake = Math.max(shake, dunk ? 9 : 4)
@@ -317,7 +367,6 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       resolveAt = now + 0.9
     }
 
-    // Steer a player toward a target with separation from everyone nearby.
     function steerTo(p: P, tx: number, ty: number, spd: number, dt: number, sep = pr * 3) {
       let sx = 0
       let sy = 0
@@ -334,12 +383,13 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       const d = Math.hypot(gx, gy)
       if (d > 2) {
         const s = Math.min(spd * dt, d)
-        p.x = clamp(p.x + (gx / d) * s, W * 0.05, W * 0.95)
-        p.y = clamp(p.y + (gy / d) * s, band + pr, H - band - pr)
+        p.x = inX(p.x + (gx / d) * s)
+        p.y = inY(p.y + (gy / d) * s)
       }
     }
 
     function runOffenseAI(dt: number) {
+      const rx = atkX('home')
       if (now > nextCutAt) {
         nextCutAt = now + 2.4 + Math.random() * 1.8
         const cands: number[] = []
@@ -348,111 +398,19 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       }
       for (let i = 0; i < home.length; i++) {
         if (i === active) continue
-        const p = home[i]
         const cutting = now < cutUntil[i]
-        const tx = cutting ? rimX - pr * 2.6 : HOME[i][0] * W
-        const ty = cutting ? rimY + (i - 2) * pr * 1.1 : HOME[i][1] * H
-        steerTo(p, tx, ty, AISPEED, dt)
+        const sp = offSpot(i, 'home')
+        const tx = cutting ? rx - pr * 2.6 : sp.x
+        const ty = cutting ? rimY + (i - 2) * pr * 1.1 : sp.y
+        steerTo(home[i], tx, ty, AISPEED, dt)
       }
     }
 
-    function flipToHome() {
-      possession = 'home'
-      active = 0
-      setOnDefense(false)
-      phase = 'live'
-    }
-
-    function flipToAway(handlerIdx: number) {
-      possession = 'away'
-      awayHandler = handlerIdx
-      awayPossStart = now
-      awayThinkAt = now + 0.5
-      let best = 0
-      let bd = Infinity
-      for (let i = 0; i < home.length; i++) {
-        const d = dist(home[i].x, home[i].y, away[handlerIdx].x, away[handlerIdx].y)
-        if (d < bd) {
-          bd = d
-          best = i
-        }
-      }
-      active = best
-      setOnDefense(true)
-    }
-
-    // Step 6: opponent defense — guard your men, pressure the ball, steal.
-    function runAwayDefenseAI(dt: number) {
-      for (let i = 0; i < away.length; i++) {
-        const man = home[i % home.length]
-        const onBall = i % home.length === active
-        const tight = onBall ? 0.18 : 0.34
-        steerTo(
-          away[i],
-          man.x + (rimX - man.x) * tight,
-          man.y + (rimY - man.y) * tight,
-          onBall ? AISPEED * 0.96 : AISPEED * 0.82,
-          dt,
-          pr * 2.4,
-        )
-      }
-      if (phase === 'live' && now > awayStealAt) {
-        awayStealAt = now + 1.3 + Math.random() * 1.6
-        const def = away[active % away.length]
-        if (dist(def.x, def.y, home[active].x, home[active].y) < pr * 2.1 && Math.random() < 0.14) {
-          result('STOLEN!', 'miss')
-          sfx.aww()
-          flipToAway(active % away.length)
-        }
-      }
-    }
-
-    function awayPass(target: number) {
-      awayHandler = target
-      sfx.pass()
-    }
-
-    function awayShoot() {
-      const bh = away[awayHandler]
-      // a well-timed BLOCK by the active defender stuffs it
-      const contestD = dist(home[active].x, home[active].y, bh.x, bh.y)
-      if (contestD < pr * 2.7 && now < blockUntil) {
-        result('BLOCKED!', 'miss')
-        sfx.block()
-        crowdJump = 0.6
-        shake = Math.max(shake, 7)
-        flipToHome()
-        return
-      }
-      const info = shotInfo(bh, home)
-      shotKind = info.layup ? 'layup' : info.three ? '3' : '2'
-      let prob = info.baseP * (info.open ? 1.05 : 0.55) * (contestD < pr * 3 ? 0.62 : 1) * awayShootF
-      prob = clamp(prob, 0.05, 0.92)
-      made = Math.random() < prob
-      shotFrom.x = bh.x
-      shotFrom.y = bh.y
-      ball.x = bh.x
-      ball.y = bh.y
-      ball.z = 0
-      ball.t = 0
-      ball.dur = info.layup ? 0.45 : 0.72
-      ball.peak = info.layup ? H * 0.12 : clamp(info.d * 0.26, H * 0.14, H * 0.4)
-      if (made) {
-        land.x = rimX
-        land.y = rimY
-      } else {
-        land.x = rimX + (Math.random() * 2 - 1) * pr * 1.3
-        land.y = rimY + (Math.random() * 2 - 1) * pr * 1.3
-      }
-      phase = 'shooting'
-      sfx.shoot()
-    }
-
-    // Step 5: opponent offense — drive, decide pass/shoot vs your defense.
     function runAwayOffenseAI(dt: number) {
+      const rx = atkX('away')
       const bh = away[awayHandler]
       const openD = nearestDist(bh, home)
-      const d2 = dist(bh.x, bh.y, rimX, rimY)
+      const d2 = dist(bh.x, bh.y, rx, rimY)
       if (now > awayThinkAt) {
         awayThinkAt = now + 0.35
         const elapsed = now - awayPossStart
@@ -475,11 +433,11 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
           }
         }
         if (best >= 0 && Math.random() < 0.5) {
-          awayPass(best)
+          awayHandler = best
+          sfx.pass()
           return
         }
       }
-      // drive toward the rim, drifting around a defender in the way
       let nd = Infinity
       let near: P | null = null
       for (const h of home) {
@@ -489,23 +447,44 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
           near = h
         }
       }
+      // drive toward the (left) rim from its open side
       let ty = rimY
       if (near && nd < pr * 2.4) ty += (bh.y < rimY ? -1 : 1) * pr * 2
-      steerTo(bh, rimX - pr * 2, ty, AISPEED * 0.95, dt)
+      steerTo(bh, rx + pr * 2, ty, AISPEED * 0.95, dt)
       for (let i = 0; i < away.length; i++) {
         if (i === awayHandler) continue
-        steerTo(away[i], AWAY[i][0] * W, AWAY[i][1] * H, AISPEED * 0.8, dt)
+        const sp = offSpot(i, 'away')
+        steerTo(away[i], sp.x, sp.y, AISPEED * 0.8, dt)
       }
     }
 
-    // Home man-defense: each non-active defender sits between his man + rim.
+    // Defenders sit between their man and the rim the offense is attacking.
     function runHomeDefenseAI(dt: number) {
+      const rx = atkX('away') // home defends the rim away attacks (left)
       for (let i = 0; i < home.length; i++) {
         if (i === active) continue
         const man = away[i % away.length]
-        const tx = man.x + (rimX - man.x) * 0.32
-        const ty = man.y + (rimY - man.y) * 0.32
-        steerTo(home[i], tx, ty, AISPEED, dt)
+        const onBall = i % away.length === awayHandler
+        const tight = onBall ? 0.18 : 0.34
+        steerTo(home[i], man.x + (rx - man.x) * tight, man.y + (rimY - man.y) * tight, onBall ? AISPEED * 0.96 : AISPEED * 0.82, dt, pr * 2.4)
+      }
+    }
+    function runAwayDefenseAI(dt: number) {
+      const rx = atkX('home') // away defends the rim home attacks (right)
+      for (let i = 0; i < away.length; i++) {
+        const man = home[i % home.length]
+        const onBall = i % home.length === active
+        const tight = onBall ? 0.18 : 0.34
+        steerTo(away[i], man.x + (rx - man.x) * tight, man.y + (rimY - man.y) * tight, onBall ? AISPEED * 0.96 : AISPEED * 0.82, dt, pr * 2.4)
+      }
+      if (phase === 'live' && now > awayStealAt) {
+        awayStealAt = now + 1.3 + Math.random() * 1.6
+        const def = away[active % away.length]
+        if (dist(def.x, def.y, home[active].x, home[active].y) < pr * 2.1 && Math.random() < 0.14) {
+          result('STOLEN!', 'miss')
+          sfx.aww()
+          flipToAway(active % away.length)
+        }
       }
     }
 
@@ -513,7 +492,6 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       active = (active + 1) % home.length
       sfx.tap()
     }
-
     function doSteal() {
       if (stealCd > 0) return
       const d = dist(home[active].x, home[active].y, away[awayHandler].x, away[awayHandler].y)
@@ -529,13 +507,12 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       }
     }
 
-    // Step 7: rebound battle on a miss — nearest-to-rim (+RNG) grabs it.
     function rebound() {
       let bestIdx = 0
       let bestIsHome = true
       let bestScore = -Infinity
       for (let i = 0; i < home.length; i++) {
-        const s = -dist(home[i].x, home[i].y, rimX, rimY) + Math.random() * pr * 4
+        const s = -dist(home[i].x, home[i].y, lastRimX, rimY) + Math.random() * pr * 4
         if (s > bestScore) {
           bestScore = s
           bestIdx = i
@@ -543,7 +520,7 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
         }
       }
       for (let i = 0; i < away.length; i++) {
-        const s = -dist(away[i].x, away[i].y, rimX, rimY) + Math.random() * pr * 4
+        const s = -dist(away[i].x, away[i].y, lastRimX, rimY) + Math.random() * pr * 4
         if (s > bestScore) {
           bestScore = s
           bestIdx = i
@@ -573,15 +550,7 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       const key = `${us}|${them}|${quarter}|${Math.ceil(gameClock)}|${Math.ceil(shotClock)}`
       if (key !== lastHudKey) {
         lastHudKey = key
-        setHud({
-          us,
-          them,
-          quarter,
-          clock: Math.max(0, Math.ceil(gameClock)),
-          shot: Math.max(0, Math.ceil(shotClock)),
-          homeAbbr,
-          awayAbbr,
-        })
+        setHud({ us, them, quarter, clock: Math.max(0, Math.ceil(gameClock)), shot: Math.max(0, Math.ceil(shotClock)), homeAbbr, awayAbbr })
       }
     }
 
@@ -592,23 +561,20 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       if (netSwish > 0) netSwish = Math.max(0, netSwish - dt)
       if (crowdJump > 0) crowdJump = Math.max(0, crowdJump - dt)
 
-      // --- match clock / quarters / shot clock (match mode only) ---
-      if (matchMode && !ended) {
-        if (phase === 'live') {
-          gameClock -= dt
-          shotClock -= dt
-          if (shotClock <= 0) {
-            result('SHOT CLOCK', 'miss')
-            if (possession === 'home') flipToAway(0)
-            else flipToHome()
-          }
-          if (gameClock <= 0) {
-            if (quarter >= 4) endGame()
-            else {
-              quarter += 1
-              gameClock = QUARTER_SECONDS
-              sfx.buzzer()
-            }
+      if (matchMode && !ended && phase === 'live') {
+        gameClock -= dt
+        shotClock -= dt
+        if (shotClock <= 0) {
+          result('SHOT CLOCK', 'miss')
+          if (possession === 'home') flipToAway(0)
+          else flipToHome()
+        }
+        if (gameClock <= 0) {
+          if (quarter >= 4) endGame()
+          else {
+            quarter += 1
+            gameClock = QUARTER_SECONDS
+            sfx.buzzer()
           }
         }
       }
@@ -617,28 +583,24 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
         prevPossession = possession
         shotClock = SHOT_CLOCK
       }
+      if (stealCd > 0) stealCd -= dt
 
       const c = controls.current
-      // sprint + stamina
       let speed = SPEED
       if (c.sprint && stamina > 0.02) {
-        speed *= 1.7
+        speed *= 1.6
         stamina = Math.max(0, stamina - dt * 0.5)
       } else {
         stamina = Math.min(1, stamina + dt * 0.3)
       }
 
-      // move active
       const a = home[active]
-      a.x = clamp(a.x + vx * speed * dt, W * 0.05, W * 0.95)
-      a.y = clamp(a.y + vy * speed * dt, band + pr, H - band - pr)
-
-      if (stealCd > 0) stealCd -= dt
+      a.x = inX(a.x + vx * speed * dt)
+      a.y = inY(a.y + vy * speed * dt)
 
       if (possession === 'home') {
         runOffenseAI(dt)
         runAwayDefenseAI(dt)
-        // offense intents
         if (phase === 'live') {
           if (c.pass) {
             c.pass = false
@@ -662,7 +624,6 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       } else {
         runHomeDefenseAI(dt)
         if (phase === 'live') runAwayOffenseAI(dt)
-        // defense intents
         if (c.switchD) {
           c.switchD = false
           if (phase === 'live') doSwitch()
@@ -708,11 +669,9 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
         result('', '')
         const shooter = possession
         if (made) {
-          // made bucket → the other team inbounds
           if (shooter === 'home') flipToAway(0)
           else flipToHome()
         } else {
-          // miss → live rebound battle
           rebound()
         }
         phase = 'live'
@@ -720,65 +679,94 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
     }
 
     // ---- drawing ----
+    function line(x1: number, y1: number, x2: number, y2: number) {
+      ctx!.beginPath()
+      ctx!.moveTo(x1, y1)
+      ctx!.lineTo(x2, y2)
+      ctx!.stroke()
+    }
     function drawCourt() {
+      const top = band
+      const bot = H - band
+      const cl = W / 2
       ctx!.fillStyle = '#c98a4a'
       ctx!.fillRect(0, 0, W, H)
       ctx!.fillStyle = 'rgba(0,0,0,0.05)'
-      for (let i = 0; i < W; i += 26) ctx!.fillRect(i, 0, 1, H)
+      for (let i = 0; i < W; i += 28) ctx!.fillRect(i, 0, 1, H)
+      // crowd
       ctx!.fillStyle = '#1a1f33'
       ctx!.fillRect(0, 0, W, band)
       ctx!.fillRect(0, H - band, W, band)
       const hop = crowdJump > 0 ? Math.sin((1 - Math.min(1, crowdJump / 0.6)) * Math.PI) * 5 : 0
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < 70; i++) {
         ctx!.fillStyle = ['#3a4170', '#4a3a6a', '#5a4a3a', '#3a5a4a'][i % 4]
         const cx = (i * 41) % W
         ctx!.beginPath()
         ctx!.arc(cx + 6, (i % 2 === 0 ? band * 0.5 : H - band * 0.5) - hop, 3.5, 0, Math.PI * 2)
         ctx!.fill()
       }
-      ctx!.strokeStyle = 'rgba(255,255,255,0.16)'
-      ctx!.lineWidth = 2
+      ctx!.strokeStyle = 'rgba(255,255,255,0.65)'
+      ctx!.lineWidth = 2.5
+      // boundary
+      ctx!.strokeRect(mx, top, W - 2 * mx, bot - top)
+      // center line + circle
+      line(cl, top, cl, bot)
       ctx!.beginPath()
-      ctx!.arc(W * 0.4, H * 0.5, pr * 1.9, 0, Math.PI * 2)
+      ctx!.arc(cl, H / 2, H * 0.13, 0, Math.PI * 2)
       ctx!.stroke()
-      ctx!.globalAlpha = 0.12
+      ctx!.globalAlpha = 0.1
       ctx!.fillStyle = '#fff'
-      ctx!.font = `bold ${pr * 2.3}px sans-serif`
+      ctx!.font = `bold ${pr * 2}px sans-serif`
       ctx!.textAlign = 'center'
       ctx!.textBaseline = 'middle'
-      ctx!.fillText(logo, W * 0.4, H * 0.5)
+      ctx!.fillText((franchise?.teamName?.[0] ?? 'H').toUpperCase(), cl, H / 2)
       ctx!.globalAlpha = 1
       ctx!.textBaseline = 'alphabetic'
-      ctx!.strokeStyle = 'rgba(255,255,255,0.5)'
-      ctx!.lineWidth = 2.5
-      const laneH = H * 0.42
-      const laneW = W * 0.18
+      // keys + arcs for both ends
+      const keyW = W * 0.13
+      const keyH = H * 0.4
       ctx!.fillStyle = 'rgba(255,255,255,0.08)'
-      ctx!.fillRect(rimX - laneW, rimY - laneH / 2, laneW + W * 0.1, laneH)
-      ctx!.strokeRect(rimX - laneW, rimY - laneH / 2, laneW + W * 0.1, laneH)
+      ctx!.strokeStyle = 'rgba(255,255,255,0.65)'
+      // left key
+      ctx!.fillRect(mx, rimY - keyH / 2, keyW, keyH)
+      ctx!.strokeRect(mx, rimY - keyH / 2, keyW, keyH)
       ctx!.beginPath()
-      ctx!.arc(rimX, rimY, arcR, 0.62 * Math.PI, 1.38 * Math.PI)
+      ctx!.arc(mx + keyW, rimY, keyH * 0.32, -Math.PI / 2, Math.PI / 2)
       ctx!.stroke()
-      // hoop + net
+      // right key
+      ctx!.fillRect(W - mx - keyW, rimY - keyH / 2, keyW, keyH)
+      ctx!.strokeRect(W - mx - keyW, rimY - keyH / 2, keyW, keyH)
+      ctx!.beginPath()
+      ctx!.arc(W - mx - keyW, rimY, keyH * 0.32, Math.PI / 2, (3 * Math.PI) / 2)
+      ctx!.stroke()
+      // 3pt arcs
+      ctx!.beginPath()
+      ctx!.arc(leftRimX, rimY, arcR, -0.42 * Math.PI, 0.42 * Math.PI)
+      ctx!.stroke()
+      ctx!.beginPath()
+      ctx!.arc(rightRimX, rimY, arcR, 0.58 * Math.PI, 1.42 * Math.PI)
+      ctx!.stroke()
+      drawHoop(leftRimX, -1)
+      drawHoop(rightRimX, 1)
+    }
+    function drawHoop(rx: number, dir: number) {
+      // backboard just outside the rim
       ctx!.fillStyle = '#eef1f6'
-      ctx!.fillRect(rimX + pr * 1.4, rimY - H * 0.11, 6, H * 0.22)
+      ctx!.fillRect(rx + dir * pr * 1.4, rimY - H * 0.1, 5, H * 0.2)
       ctx!.strokeStyle = '#ff6a2a'
       ctx!.lineWidth = 4
       ctx!.beginPath()
-      ctx!.ellipse(rimX, rimY, pr * 0.5, pr * 0.8, 0, 0, Math.PI * 2)
+      ctx!.ellipse(rx, rimY, pr * 0.45, pr * 0.75, 0, 0, Math.PI * 2)
       ctx!.stroke()
-      ctx!.strokeStyle = netFlash > 0 ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)'
+      const swishHere = Math.abs(rx - lastRimX) < 1
+      const sw = swishHere && netSwish > 0 ? netSwish / 0.5 : 0
+      ctx!.strokeStyle = swishHere && netFlash > 0 ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)'
       ctx!.lineWidth = 1.4
-      const sw = netSwish > 0 ? netSwish / 0.5 : 0
       for (let i = -2; i <= 2; i++) {
-        const sway = Math.sin((0.5 - netSwish) * 26 + i * 1.5) * pr * 0.18 * sw
-        ctx!.beginPath()
-        ctx!.moveTo(rimX, rimY + (i / 2) * pr * 0.7)
-        ctx!.lineTo(rimX - pr * 0.7 - sway, rimY + (i / 4) * pr * 0.7 + sw * pr * 0.25)
-        ctx!.stroke()
+        const sway = Math.sin((0.5 - netSwish) * 26 + i * 1.5) * pr * 0.16 * sw
+        line(rx, rimY + (i / 2) * pr * 0.65, rx - dir * pr * 0.6 + sway, rimY + (i / 4) * pr * 0.65 + sw * pr * 0.25)
       }
     }
-
     function drawPlayer(p: P, color: string) {
       ctx!.fillStyle = 'rgba(0,0,0,0.22)'
       ctx!.beginPath()
@@ -797,7 +785,6 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       ctx!.arc(p.x, p.y - pr * 0.65, pr * 0.42, 0, Math.PI * 2)
       ctx!.fill()
     }
-
     function drawActiveMarker(p: P) {
       const pulse = 1 + Math.sin(t * 6) * 0.12
       ctx!.strokeStyle = '#ffcf4a'
@@ -814,7 +801,6 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       ctx!.closePath()
       ctx!.fill()
     }
-
     function drawBall(x: number, y: number, z: number) {
       if (z > 1) {
         ctx!.fillStyle = 'rgba(0,0,0,0.2)'
@@ -835,30 +821,25 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       ctx!.lineTo(x + ballR, by)
       ctx!.stroke()
     }
-
     function drawOverlays() {
       const a = home[active]
-      // charge meter + live make-% while charging
       if (phase === 'live' && possession === 'home' && controls.current.charging) {
         const bw = pr * 2.6
         const bx = a.x - bw / 2
         const by = a.y - pr * 2.6
         ctx!.fillStyle = 'rgba(0,0,0,0.5)'
         ctx!.fillRect(bx, by, bw, 7)
-        // sweet band
         ctx!.fillStyle = 'rgba(90,230,140,0.55)'
         ctx!.fillRect(bx + bw * 0.78, by, bw * 0.17, 7)
         ctx!.fillStyle = '#ffcf4a'
         ctx!.fillRect(bx, by, bw * clamp(charge, 0, 1), 7)
-        // make %
-        const info = shotInfo(a, away)
-        const prob = clamp(info.baseP * (info.open ? 1.12 : 0.62) * timingFactor(charge), 0.05, 0.96)
+        const info = shotInfo(a, away, atkX('home'))
+        const prob = clamp(info.baseP * (info.open ? 1.12 : 0.62) * timingFactor(charge) * homeShootF, 0.05, 0.96)
         ctx!.fillStyle = '#fff'
         ctx!.font = 'bold 13px system-ui'
         ctx!.textAlign = 'center'
         ctx!.fillText(`${Math.round(prob * 100)}%`, a.x, by - 5)
       }
-      // contest ring while blocking (a real shot to block arrives in step 5)
       if (now < blockUntil) {
         ctx!.strokeStyle = '#b86bff'
         ctx!.lineWidth = 3
@@ -866,7 +847,6 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
         ctx!.arc(a.x, a.y - pr * 1.9, pr * 0.55, 0, Math.PI * 2)
         ctx!.stroke()
       }
-      // stamina bar (when sprinting / not full)
       if (stamina < 0.999) {
         const bw = pr * 1.6
         const bx = a.x - bw / 2
@@ -877,7 +857,6 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
         ctx!.fillRect(bx, by, bw * stamina, 4)
       }
     }
-
     function drawJoystick() {
       if (joyId === null) return
       ctx!.fillStyle = 'rgba(255,255,255,0.08)'
@@ -892,7 +871,6 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       ctx!.arc(baseX + vx * maxR, baseY + vy * maxR, maxR * 0.45, 0, Math.PI * 2)
       ctx!.fill()
     }
-
     function render() {
       ctx!.save()
       if (shake > 0) ctx!.translate((Math.random() * 2 - 1) * shake, (Math.random() * 2 - 1) * shake)
@@ -919,10 +897,7 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
       now = time / 1000
       let dt = Math.min(0.034, (time - last) / 1000)
       last = time
-      // buzzer-beater slow-mo: Q4, final seconds, close, ball in the air
-      if (matchMode && quarter === 4 && gameClock <= 8 && Math.abs(us - them) <= 6 && phase === 'shooting') {
-        dt *= 0.4
-      }
+      if (matchMode && quarter === 4 && gameClock <= 8 && Math.abs(us - them) <= 6 && phase === 'shooting') dt *= 0.4
       update(dt)
       render()
       if (matchMode) pushHud()
@@ -1002,11 +977,7 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
     <div className="court-wrap">
       {matchMode ? (
         <div className="scoreboard">
-          <button
-            className="court-back"
-            onClick={() => navigate('season')}
-            aria-label="Back"
-          >
+          <button className="court-back" onClick={() => navigate('season')} aria-label="Back">
             ‹
           </button>
           <div className="sb-team" style={{ ['--p']: franchise?.colorPrimary } as React.CSSProperties}>
@@ -1030,18 +1001,16 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
           </button>
           <div className="court-stat">
             <span className="cs-k">5v5</span>
-            <span className="cs-v">BETA</span>
+            <span className="cs-v">PRACTICE</span>
           </div>
           <div className="court-hint-top">
             {onDefense ? (
               <>
-                <b>DEFENSE</b> · <b>SWITCH</b> · <b>STEAL</b> near ball · <b>BLOCK</b> a shot ·{' '}
-                <b>SPRINT</b>
+                <b>DEFENSE</b> · <b>SWITCH</b> · <b>STEAL</b> · <b>BLOCK</b> · <b>SPRINT</b>
               </>
             ) : (
               <>
-                <b>Left</b>: move · <b>SHOOT</b>: hold &amp; release in the green · <b>PASS</b>{' '}
-                switches control · <b>SPRINT</b>
+                <b>Left</b> moves · <b>SHOOT</b> hold &amp; release in green · <b>PASS</b> · <b>SPRINT</b>
               </>
             )}
           </div>
@@ -1054,9 +1023,7 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
         {final && (
           <div className="c5-final">
             <div className="c5-final-card">
-              <div className={`final-title ${final.win ? 'win' : 'loss'}`}>
-                {final.win ? 'WIN!' : 'LOSS'}
-              </div>
+              <div className={`final-title ${final.win ? 'win' : 'loss'}`}>{final.win ? 'WIN!' : 'LOSS'}</div>
               <div className="break-score">
                 <span>{hud.homeAbbr}</span>
                 <b>
@@ -1073,60 +1040,32 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
 
         {onDefense ? (
           <div className="c5-buttons">
-            <button
-              className="c5-btn pass"
-              onPointerDown={press((c) => {
-                c.switchD = true
-              })}
-            >
+            <button className="c5-btn pass" onPointerDown={press((c) => (c.switchD = true))}>
               🔄<small>SWITCH</small>
             </button>
-            <button
-              className="c5-btn shoot"
-              onPointerDown={press((c) => {
-                c.steal = true
-              })}
-            >
+            <button className="c5-btn shoot" onPointerDown={press((c) => (c.steal = true))}>
               ✋<small>STEAL</small>
             </button>
-            <button
-              className="c5-btn block"
-              onPointerDown={press((c) => {
-                c.block = true
-              })}
-            >
+            <button className="c5-btn block" onPointerDown={press((c) => (c.block = true))}>
               🚫<small>BLOCK</small>
             </button>
             <button
               className="c5-btn sprint"
-              onPointerDown={press((c) => {
-                c.sprint = true
-              })}
-              onPointerUp={press((c) => {
-                c.sprint = false
-              })}
-              onPointerLeave={press((c) => {
-                c.sprint = false
-              })}
+              onPointerDown={press((c) => (c.sprint = true))}
+              onPointerUp={press((c) => (c.sprint = false))}
+              onPointerLeave={press((c) => (c.sprint = false))}
             >
               ⚡<small>SPRINT</small>
             </button>
           </div>
         ) : (
           <div className="c5-buttons">
-            <button
-              className="c5-btn pass"
-              onPointerDown={press((c) => {
-                c.pass = true
-              })}
-            >
+            <button className="c5-btn pass" onPointerDown={press((c) => (c.pass = true))}>
               ➜<small>PASS</small>
             </button>
             <button
               className="c5-btn shoot"
-              onPointerDown={press((c) => {
-                c.charging = true
-              })}
+              onPointerDown={press((c) => (c.charging = true))}
               onPointerUp={press((c) => {
                 c.charging = false
                 c.release = true
@@ -1142,15 +1081,9 @@ export default function Court5v5({ matchMode = false }: { matchMode?: boolean })
             </button>
             <button
               className="c5-btn sprint"
-              onPointerDown={press((c) => {
-                c.sprint = true
-              })}
-              onPointerUp={press((c) => {
-                c.sprint = false
-              })}
-              onPointerLeave={press((c) => {
-                c.sprint = false
-              })}
+              onPointerDown={press((c) => (c.sprint = true))}
+              onPointerUp={press((c) => (c.sprint = false))}
+              onPointerLeave={press((c) => (c.sprint = false))}
             >
               ⚡<small>SPRINT</small>
             </button>
