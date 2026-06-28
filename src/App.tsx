@@ -1,12 +1,13 @@
 import { Canvas } from '@react-three/fiber'
 import Arena from './three/Arena'
 import Board from './three/Board'
+import Shop from './ui/Shop'
 import { useGameStore } from './game/store'
 
 /**
- * Phase 2 shell: top HUD, the 3D colosseum + interactive board (grid, bench,
- * drag & merge), and a placeholder shop bar. A temporary "add unit" control is
- * present for testing merges until the real shop arrives in Phase 3.
+ * Phase 3 shell: top HUD, the 3D colosseum + interactive board (grid, bench,
+ * drag & merge), and the recruit shop. A temporary "next wave" control grants
+ * income so the economy can be tested until real fights/waves land (Phase 4–5).
  */
 
 function TopHud() {
@@ -32,27 +33,13 @@ function TopHud() {
 }
 
 function DevBar() {
-  const addRandomUnit = useGameStore((s) => s.addRandomUnit)
+  const grantIncome = useGameStore((s) => s.grantIncome)
   return (
     <div className="dev-bar">
-      <span className="dev-hint">drag two matching units together to merge</span>
-      <button className="dev-btn" type="button" onClick={addRandomUnit}>
-        + ADD UNIT (temp)
+      <span className="dev-hint">buy units below • drag matching units to merge</span>
+      <button className="dev-btn" type="button" onClick={grantIncome}>
+        ▶ NEXT WAVE — collect income (temp)
       </button>
-    </div>
-  )
-}
-
-function ShopBarPlaceholder() {
-  return (
-    <div className="shop-bar">
-      <div className="shop-row">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="shop-slot">
-            ?
-          </div>
-        ))}
-      </div>
     </div>
   )
 }
@@ -77,7 +64,7 @@ export default function App() {
         <DevBar />
       </div>
 
-      <ShopBarPlaceholder />
+      <Shop />
     </div>
   )
 }

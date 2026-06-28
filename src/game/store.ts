@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { UnitInstance, UnitType, Level, SlotRef } from './types'
 import { slotPos, BOARD_Y } from './layout'
-import { UNIT_TYPES } from './units'
+import { UNIT_TYPES, UNIT_DEFS } from './units'
 import { sfx } from './sfx'
 
 let _id = 0
@@ -12,6 +12,21 @@ const mk = (type: UnitType, level: Level = 1): UnitInstance => ({
   level,
 })
 
+// --- Economy constants (classic autobattler; tuned in Phase 10) ---
+const START_COINS = 10
+const REROLL_COST = 2
+const INCOME_BASE = 5
+const WIN_BONUS = 1
+const SHOP_SIZE = 4
+const MAX_INTEREST = 5
+
+const randType = () => UNIT_TYPES[Math.floor(Math.random() * UNIT_TYPES.length)]
+const rollShopArr = (): UnitType[] =>
+  Array.from({ length: SHOP_SIZE }, randType)
+/** Interest: +1 coin per 10 saved, capped. Rewards banking gold. */
+const interestFor = (coins: number) =>
+  Math.min(Math.floor(coins / 10), MAX_INTEREST)
+
 interface Burst {
   id: string
   pos: [number, number, number]
@@ -20,6 +35,7 @@ interface Burst {
 interface GameState {
   board: (UnitInstance | null)[]
   bench: (UnitInstance | null)[]
+  shop: (UnitType | null)[]
   coins: number
   lives: number
   wave: number
@@ -28,8 +44,12 @@ interface GameState {
   kickAt: number
   kickPower: number
 
+  rerollCost: number
+
   moveUnit: (from: SlotRef, to: SlotRef) => void
-  addRandomUnit: () => void
+  buyFromShop: (index: number) => void
+  reroll: () => void
+  grantIncome: () => void
   removeBurst: (id: string) => void
   triggerShake: (power: number) => void
 }
@@ -37,21 +57,26 @@ interface GameState {
 const sameSlot = (a: SlotRef, b: SlotRef) =>
   a.area === b.area && a.index === b.index
 
+const firstEmpty = (arr: (UnitInstance | null)[]) => arr.findIndex((x) => !x)
+
 export const useGameStore = create<GameState>((set, get) => ({
-  // Seeded with two Brutes on the bench so a merge can be tried immediately.
+  // Two Brutes seeded on the front row so a merge can be tried immediately,
+  // with the bench left open so the shop can be tested too.
   board: (() => {
     const b = Array<UnitInstance | null>(9).fill(null)
-    b[7] = mk('legionnaire')
-    b[1] = mk('archer')
+    b[6] = mk('brute')
+    b[7] = mk('brute')
     return b
   })(),
-  bench: [mk('brute'), mk('brute'), mk('priestess')],
-  coins: 10,
+  bench: [null, null, null],
+  shop: rollShopArr(),
+  coins: START_COINS,
   lives: 3,
   wave: 1,
   bursts: [],
   kickAt: 0,
   kickPower: 0,
+  rerollCost: REROLL_COST,
 
   moveUnit: (from, to) => {
     if (sameSlot(from, to)) return
@@ -70,7 +95,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     const dst = read(to)
 
     if (!dst) {
-      // Move into empty slot
       write(to, src)
       write(from, null)
       set({ board, bench })
@@ -101,24 +125,46 @@ export const useGameStore = create<GameState>((set, get) => ({
     sfx.drop()
   },
 
-  addRandomUnit: () => {
+  buyFromShop: (index) => {
     const s = get()
-    const type = UNIT_TYPES[Math.floor(Math.random() * UNIT_TYPES.length)]
-    const bench = [...s.bench]
-    const bi = bench.findIndex((x) => !x)
-    if (bi >= 0) {
-      bench[bi] = mk(type)
-      set({ bench })
-      sfx.drop()
+    const type = s.shop[index]
+    if (!type) return
+    const cost = UNIT_DEFS[type].cost
+    if (s.coins < cost) {
+      sfx.deny()
       return
     }
-    const board = [...s.board]
-    const oi = board.findIndex((x) => !x)
-    if (oi >= 0) {
-      board[oi] = mk(type)
-      set({ board })
-      sfx.drop()
+    const bench = [...s.bench]
+    const bi = firstEmpty(bench)
+    if (bi < 0) {
+      // Bench full — no room to recruit
+      sfx.deny()
+      return
     }
+    bench[bi] = mk(type)
+    const shop = [...s.shop]
+    shop[index] = null
+    set({ bench, shop, coins: s.coins - cost })
+    sfx.buy()
+  },
+
+  reroll: () => {
+    const s = get()
+    if (s.coins < REROLL_COST) {
+      sfx.deny()
+      return
+    }
+    set({ coins: s.coins - REROLL_COST, shop: rollShopArr() })
+    sfx.reroll()
+  },
+
+  grantIncome: () => {
+    const s = get()
+    const interest = interestFor(s.coins)
+    const gain = INCOME_BASE + WIN_BONUS + interest
+    // New round: collect income (base + win bonus + interest) and a free shop.
+    set({ coins: s.coins + gain, wave: s.wave + 1, shop: rollShopArr() })
+    sfx.coin()
   },
 
   removeBurst: (id) =>

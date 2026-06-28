@@ -57,4 +57,20 @@ export const sfx = {
     tone({ freq: 110, dur: 0.26, type: 'sine', gain: 0.22, slideTo: 70 })
     tone({ freq: 900, dur: 0.12, type: 'triangle', gain: 0.08, delay: 0.04 })
   },
+  buy() {
+    tone({ freq: 520, dur: 0.08, type: 'triangle', gain: 0.14 })
+    tone({ freq: 780, dur: 0.1, type: 'triangle', gain: 0.12, delay: 0.05 })
+  },
+  coin() {
+    tone({ freq: 880, dur: 0.07, type: 'square', gain: 0.1 })
+    tone({ freq: 1320, dur: 0.09, type: 'square', gain: 0.08, delay: 0.04 })
+  },
+  reroll() {
+    tone({ freq: 300, dur: 0.05, type: 'sawtooth', gain: 0.08 })
+    tone({ freq: 440, dur: 0.05, type: 'sawtooth', gain: 0.08, delay: 0.04 })
+    tone({ freq: 600, dur: 0.05, type: 'sawtooth', gain: 0.07, delay: 0.08 })
+  },
+  deny() {
+    tone({ freq: 170, dur: 0.16, type: 'sawtooth', gain: 0.12, slideTo: 90 })
+  },
 }
