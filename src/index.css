@@ -776,6 +776,41 @@ body {
     opacity: 1;
   }
 }
+.auto-badge {
+  position: absolute;
+  top: 8px;
+  right: calc(env(safe-area-inset-right) + 8px);
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(11, 14, 28, 0.78);
+  border: 1px solid rgba(90, 230, 140, 0.5);
+  color: #5ae68c;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+.auto-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #5ae68c;
+  box-shadow: 0 0 6px #5ae68c;
+  animation: autoPulse 1s ease-in-out infinite;
+}
+@keyframes autoPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
 .court-hint-top {
   flex: 1 1 auto;
   text-align: center;
